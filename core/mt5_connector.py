@@ -227,7 +227,8 @@ class MT5Connector:
 
     def _generate_synthetic_ohlc(self, symbol: str, tf_name: str, bars: int) -> pd.DataFrame:
         """Generates realistic trend + liquidity sweep + BOS price action for simulation tests."""
-        seed = abs(hash(f"{symbol}_{tf_name}")) % (2**32)
+        import zlib
+        seed = zlib.crc32(f"{symbol}_{tf_name}".encode("utf-8"))
         rng = np.random.default_rng(seed)
 
         is_jpy = "JPY" in symbol
@@ -247,26 +248,38 @@ class MT5Connector:
             closes.append(closes[-1] + drift + noise)
 
         if tf_name == "M15" and bars >= 30:
-            # Create a clear swing low, sweep it, then break structure upward
-            ref = closes[-20]
-            for j in range(-15, -8):
-                closes[j] = ref + step * 0.5
-            closes[-7] = ref - step * 1.4  # Liquidity sweep below swing low
-            closes[-6] = ref + step * 0.2  # Strong rejection
-            closes[-5] = ref + step * 1.1
-            closes[-4] = ref + step * 1.8  # BOS impulsive candle
-            closes[-3] = ref + step * 1.3  # Pullback into OB/FVG
-            closes[-2] = ref + step * 1.5
-            closes[-1] = ref + step * 1.9
+            # Create a clear swing low at -18, swing high at -12, sweep at -5, then bullish BOS
+            ref = closes[-25]
+            closes[-20] = ref + step * 0.6
+            closes[-19] = ref + step * 0.1
+            closes[-18] = ref - step * 1.2  # Clear fractal swing low
+            closes[-17] = ref + step * 0.1
+            closes[-16] = ref + step * 0.5
+            closes[-14] = ref + step * 0.8
+            closes[-13] = ref + step * 1.2
+            closes[-12] = ref + step * 1.6  # Clear fractal swing high
+            closes[-11] = ref + step * 1.1
+            closes[-10] = ref + step * 0.7
+            closes[-5] = ref - step * 2.2   # Liquidity sweep below swing low (-18)
+            closes[-4] = ref + step * 0.3   # Bullish engulfing rejection
+            closes[-3] = ref + step * 1.2
+            closes[-2] = ref + step * 1.9   # BOS above swing high (-12)
+            closes[-1] = ref + step * 2.1
 
         closes_arr = np.array(closes)
         opens = np.roll(closes_arr, 1)
         opens[0] = closes_arr[0]
-        highs = np.maximum(opens, closes_arr) + np.abs(rng.normal(0, step * 0.35, bars))
-        lows = np.minimum(opens, closes_arr) - np.abs(rng.normal(0, step * 0.35, bars))
+        highs = np.maximum(opens, closes_arr) + np.abs(rng.normal(0, step * 0.25, bars))
+        lows = np.minimum(opens, closes_arr) - np.abs(rng.normal(0, step * 0.25, bars))
 
         if tf_name == "M15" and bars >= 30:
-            lows[-7] = closes_arr[-7] - step * 0.8  # Deep sweep wick
+            lows[-18] = closes_arr[-18] - step * 0.4
+            highs[-12] = closes_arr[-12] + step * 0.4
+            lows[-5] = closes_arr[-18] - step * 1.5  # Deep sweep wick below -18's low
+            closes_arr[-4] = closes_arr[-5] + step * 2.5
+            opens[-4] = closes_arr[-5]
+            closes_arr[-1] = float(np.max(highs[-15:-1])) + step * 0.6
+            highs[-1] = closes_arr[-1] + step * 0.1
 
         vol = rng.integers(150, 1200, size=bars)
         df = pd.DataFrame(
