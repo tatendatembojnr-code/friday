@@ -1,0 +1,43 @@
+{
+  "bot_name": "FRIDAY",
+  "mode": {
+    "dry_run": true,
+    "poll_interval_seconds": 60,
+    "magic_number": 777001
+  },
+  "trading": {
+    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"],
+    "htf_timeframes": ["D1", "H4"],
+    "ltf_timeframe": "M15",
+    "context_timeframe": "H1",
+    "bars_to_fetch": 250
+  },
+  "smc": {
+    "swing_lookback": 5,
+    "min_smc_score": 65,
+    "fvg_min_atr_ratio": 0.15,
+    "sl_atr_buffer": 0.4,
+    "default_rr_target": 2.5
+  },
+  "ai_brain": {
+    "enabled": true,
+    "model": "gpt-4o-mini",
+    "min_confidence": 70,
+    "temperature": 0.15,
+    "max_memory_examples": 5,
+    "allow_tp_sl_refinement": true
+  },
+  "risk": {
+    "risk_per_trade_pct": 1.0,
+    "max_daily_loss_pct": 3.0,
+    "max_drawdown_pct": 8.0,
+    "max_open_trades": 3,
+    "max_daily_trades": 5,
+    "min_risk_reward": 1.8,
+    "max_spread_atr_ratio": 0.25,
+    "breakeven_at_rr": 1.0,
+    "trailing_start_rr": 1.5,
+    "trailing_atr_mult": 1.0,
+    "allowed_sessions": ["London", "New York", "London-NY Overlap"]
+  }
+}
