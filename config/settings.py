@@ -85,6 +85,8 @@ class Credentials:
     gemini_api_key: str = ""
     groq_api_key: str = ""
     ollama_base_url: str = ""
+    ollama_api_key: str = ""
+    ollama_model: str = "deepseek-v4.1-flash"
 
 
 @dataclass
@@ -117,6 +119,8 @@ class FridaySettings:
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", ""),
+            ollama_api_key=os.getenv("OLLAMA_API_KEY", ""),
+            ollama_model=os.getenv("OLLAMA_MODEL", "deepseek-v4.1-flash"),
         )
 
         return cls(

@@ -58,6 +58,14 @@ def run_cycle(
 
         htf_bias = build_htf_bias(tf_summaries)
         setup = smc.analyze(df_ltf, symbol, htf_bias)
+
+        # Smart auto-close: if an open trade is contradicted by a strong opposing SMC setup, close it
+        if setup is not None and setup.smc_score >= 70:
+            for pos in open_positions:
+                if pos["symbol"] == symbol and pos["type"] != setup.direction:
+                    if order_mgr.close_position(pos, reason=f"Opposing SMC {setup.direction} (score={setup.smc_score})"):
+                        open_positions = connector.get_open_positions(magic=settings.mode.magic_number)
+
         if setup is None:
             logger.info(f"{symbol}: No qualifying SMC setup (HTF={htf_bias}).")
             continue
@@ -175,6 +183,8 @@ def main() -> None:
         gemini_api_key=settings.credentials.gemini_api_key,
         groq_api_key=settings.credentials.groq_api_key,
         ollama_base_url=settings.credentials.ollama_base_url,
+        ollama_api_key=settings.credentials.ollama_api_key,
+        ollama_model=settings.credentials.ollama_model,
     )
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
     bridge = EA31337Bridge(settings.ea31337_bridge)
