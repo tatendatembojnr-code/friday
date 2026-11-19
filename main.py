@@ -102,6 +102,7 @@ def run_cycle(
         lot_size = 0.0
 
         if ai_passed:
+            symbol_open_count = sum(1 for p in open_positions if p["symbol"] == symbol)
             allowed, lot_size, reason = risk_mgr.validate_and_size(
                 setup=setup,
                 specs=specs,
@@ -110,6 +111,7 @@ def run_cycle(
                 today_pnl=today_pnl,
                 today_trades=today_trades,
                 session=session,
+                symbol_open_count=symbol_open_count,
             )
             if allowed:
                 res = order_mgr.execute_setup(setup, lot_size)

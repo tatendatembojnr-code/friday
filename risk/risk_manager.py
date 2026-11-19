@@ -28,6 +28,7 @@ class RiskManager:
         today_pnl: float,
         today_trades: int,
         session: str,
+        symbol_open_count: int = 0,
     ) -> Tuple[bool, float, str]:
         if account.balance <= 0:
             return False, 0.0, "Account balance is zero or unavailable."
@@ -45,6 +46,9 @@ class RiskManager:
 
         if open_positions_count >= self.cfg.max_open_trades:
             return False, 0.0, f"Max open trades ({self.cfg.max_open_trades}) reached."
+
+        if symbol_open_count >= self.cfg.max_trades_per_symbol:
+            return False, 0.0, f"Max open trades per symbol ({self.cfg.max_trades_per_symbol}) reached for {setup.symbol}."
 
         if today_trades >= self.cfg.max_daily_trades:
             return False, 0.0, f"Max daily trades ({self.cfg.max_daily_trades}) reached."

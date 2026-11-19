@@ -53,6 +53,7 @@ class OrderManager:
             return {"success": False, "error": "MetaTrader5 package unavailable"}
 
         order_type = mt5.ORDER_TYPE_BUY if setup.direction == "BUY" else mt5.ORDER_TYPE_SELL
+        filling_mode = self._resolve_filling_mode(setup.symbol)
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": setup.symbol,
@@ -65,7 +66,7 @@ class OrderManager:
             "magic": self.magic,
             "comment": f"FRIDAY_{setup.smc_score}",
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": filling_mode,
         }
 
         result = mt5.order_send(request)
@@ -119,6 +120,17 @@ class OrderManager:
                         new_sl = candidate
                 if new_sl and new_sl < sl:
                     self._modify_sl(pos["ticket"], pos["symbol"], new_sl, pos["tp"])
+
+    def _resolve_filling_mode(self, symbol: str) -> int:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return mt5.ORDER_FILLING_IOC
+        mode = info.filling_mode
+        if mode & 2:  # SYMBOL_FILLING_IOC
+            return mt5.ORDER_FILLING_IOC
+        if mode & 1:  # SYMBOL_FILLING_FOK
+            return mt5.ORDER_FILLING_FOK
+        return mt5.ORDER_FILLING_RETURN
 
     def _modify_sl(self, ticket: int, symbol: str, new_sl: float, tp: float) -> None:
         request = {
