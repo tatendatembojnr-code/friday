@@ -95,7 +95,7 @@ class SMCEngine:
 
         candidates: List[TradeSetup] = []
 
-        # --- Check Bullish Setup (Liquidity sweep below swing low + BOS above prior swing high) ---
+        # --- Check Bullish Setup (Liquidity sweep OR HTF-aligned BOS/OB/FVG continuation) ---
         prior_lows = [lvl for idx, lvl in swing_lows if idx < len(df) - 6]
         prior_highs = [lvl for idx, lvl in swing_highs if idx < len(df) - 4]
         if prior_lows and prior_highs:
@@ -104,6 +104,7 @@ class SMCEngine:
 
             swept_low = float(recent_lows.min()) < key_low and recent_close > key_low
             bos_up = recent_close > key_high or float(df["close"].iloc[-3:].max()) > key_high
+            bull_candle = float(df["close"].iloc[-1]) > float(df["open"].iloc[-1])
             fvg = self._detect_fvg(df, atr, "BUY")
             ob = self._detect_order_block(df, "BUY")
 
@@ -122,13 +123,15 @@ class SMCEngine:
                 score += 15
                 tags.append("BullishOB")
             if htf_bias == "BULLISH":
-                score += 15
+                score += 20
                 tags.append("HTFAligned")
+            if bull_candle:
+                score += 10
+                tags.append("BullishMomentum")
 
-            if score >= self.cfg.min_smc_score and swept_low:
-                sl = min(float(recent_lows.min()), ob[0] if ob else float(recent_lows.min())) - (
-                    atr * self.cfg.sl_atr_buffer
-                )
+            if score >= self.cfg.min_smc_score and (swept_low or bos_up or (htf_bias == "BULLISH" and (ob or fvg))):
+                anchor_low = min(float(recent_lows.min()), ob[0] if ob else float(recent_lows.min()))
+                sl = min(anchor_low, recent_close - atr) - (atr * self.cfg.sl_atr_buffer)
                 risk = recent_close - sl
                 if risk > 0:
                     tp = recent_close + risk * self.cfg.default_rr_target
@@ -144,17 +147,18 @@ class SMCEngine:
                             atr=atr,
                             htf_bias=htf_bias,
                             confluence_tags=tags,
-                            notes=f"Swept low {key_low:.5f}, BOS target {key_high:.5f}",
+                            notes=f"Bullish SMC ({', '.join(tags)})",
                         )
                     )
 
-        # --- Check Bearish Setup (Liquidity sweep above swing high + BOS below prior swing low) ---
+        # --- Check Bearish Setup (Liquidity sweep OR HTF-aligned BOS/OB/FVG continuation) ---
         if prior_lows and prior_highs:
             key_low = prior_lows[-1]
             key_high = prior_highs[-1]
 
             swept_high = float(recent_highs.max()) > key_high and recent_close < key_high
             bos_down = recent_close < key_low or float(df["close"].iloc[-3:].min()) < key_low
+            bear_candle = float(df["close"].iloc[-1]) < float(df["open"].iloc[-1])
             fvg = self._detect_fvg(df, atr, "SELL")
             ob = self._detect_order_block(df, "SELL")
 
@@ -173,13 +177,15 @@ class SMCEngine:
                 score += 15
                 tags.append("BearishOB")
             if htf_bias == "BEARISH":
-                score += 15
+                score += 20
                 tags.append("HTFAligned")
+            if bear_candle:
+                score += 10
+                tags.append("BearishMomentum")
 
-            if score >= self.cfg.min_smc_score and swept_high:
-                sl = max(float(recent_highs.max()), ob[1] if ob else float(recent_highs.max())) + (
-                    atr * self.cfg.sl_atr_buffer
-                )
+            if score >= self.cfg.min_smc_score and (swept_high or bos_down or (htf_bias == "BEARISH" and (ob or fvg))):
+                anchor_high = max(float(recent_highs.max()), ob[1] if ob else float(recent_highs.max()))
+                sl = max(anchor_high, recent_close + atr) + (atr * self.cfg.sl_atr_buffer)
                 risk = sl - recent_close
                 if risk > 0:
                     tp = recent_close - risk * self.cfg.default_rr_target
@@ -195,7 +201,7 @@ class SMCEngine:
                             atr=atr,
                             htf_bias=htf_bias,
                             confluence_tags=tags,
-                            notes=f"Swept high {key_high:.5f}, BOS target {key_low:.5f}",
+                            notes=f"Bearish SMC ({', '.join(tags)})",
                         )
                     )
 

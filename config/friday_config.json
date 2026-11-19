@@ -14,7 +14,7 @@
   },
   "smc": {
     "swing_lookback": 5,
-    "min_smc_score": 65,
+    "min_smc_score": 55,
     "fvg_min_atr_ratio": 0.15,
     "sl_atr_buffer": 0.4,
     "default_rr_target": 2.5
@@ -22,7 +22,7 @@
   "ai_brain": {
     "enabled": true,
     "model": "gpt-4o-mini",
-    "min_confidence": 70,
+    "min_confidence": 60,
     "temperature": 0.15,
     "max_memory_examples": 5,
     "allow_tp_sl_refinement": true

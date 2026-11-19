@@ -33,8 +33,14 @@ class OrderManager:
             return {"success": False, "error": f"No symbol specs for {setup.symbol}"}
 
         exec_price = specs.ask if setup.direction == "BUY" else specs.bid
-        sl = round(setup.stop_loss, specs.digits)
-        tp = round(setup.take_profit, specs.digits)
+        sl_dist = abs(setup.entry - setup.stop_loss)
+        tp_dist = abs(setup.take_profit - setup.entry)
+        if setup.direction == "BUY":
+            sl = round(exec_price - sl_dist, specs.digits)
+            tp = round(exec_price + tp_dist, specs.digits)
+        else:
+            sl = round(exec_price + sl_dist, specs.digits)
+            tp = round(exec_price - tp_dist, specs.digits)
 
         if self.dry_run:
             self.logger.info(
