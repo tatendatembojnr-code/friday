@@ -82,6 +82,9 @@ class Credentials:
     mt5_server: str = ""
     mt5_path: str = ""
     openai_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    ollama_base_url: str = ""
 
 
 @dataclass
@@ -111,6 +114,9 @@ class FridaySettings:
             mt5_server=os.getenv("MT5_SERVER", ""),
             mt5_path=os.getenv("MT5_PATH", ""),
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+            groq_api_key=os.getenv("GROQ_API_KEY", ""),
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", ""),
         )
 
         return cls(
