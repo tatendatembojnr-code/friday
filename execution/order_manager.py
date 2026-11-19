@@ -121,6 +121,36 @@ class OrderManager:
                 if new_sl and new_sl < sl:
                     self._modify_sl(pos["ticket"], pos["symbol"], new_sl, pos["tp"])
 
+    def close_position(self, pos: Dict, reason: str = "") -> bool:
+        """Close an open position at market (e.g., on AI/SMC reversal)."""
+        if self.dry_run or not HAS_MT5:
+            return False
+        specs = self.connector.get_symbol_specs(pos["symbol"])
+        if specs is None:
+            return False
+        close_type = mt5.ORDER_TYPE_SELL if pos["type"] == "BUY" else mt5.ORDER_TYPE_BUY
+        price = specs.bid if pos["type"] == "BUY" else specs.ask
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": pos["symbol"],
+            "volume": pos["volume"],
+            "type": close_type,
+            "position": pos["ticket"],
+            "price": price,
+            "deviation": 20,
+            "magic": self.magic,
+            "comment": "FRIDAY_REV_CLOSE",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._resolve_filling_mode(pos["symbol"]),
+        }
+        res = mt5.order_send(request)
+        if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+            self.logger.info(
+                f"AUTO-CLOSED Ticket={pos['ticket']} ({pos['symbol']} {pos['type']}) | PnL={pos['profit']:.2f} | {reason}"
+            )
+            return True
+        return False
+
     def _resolve_filling_mode(self, symbol: str) -> int:
         info = mt5.symbol_info(symbol)
         if info is None:

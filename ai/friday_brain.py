@@ -63,6 +63,8 @@ class FridayBrain:
         gemini_api_key: str = "",
         groq_api_key: str = "",
         ollama_base_url: str = "",
+        ollama_api_key: str = "",
+        ollama_model: str = "deepseek-v4.1-flash",
     ):
         self.logger = logging.getLogger("FRIDAY")
         self.cfg = config
@@ -76,7 +78,14 @@ class FridayBrain:
         def _valid(k: str) -> bool:
             return bool(k and "your-" not in k.lower())
 
-        if _valid(gemini_api_key):
+        if _valid(ollama_api_key):
+            self.client = OpenAI(
+                api_key=ollama_api_key,
+                base_url=ollama_base_url or "https://ollama.com/v1",
+            )
+            self.provider = "ollama_cloud"
+            self.active_model = ollama_model or "deepseek-v4.1-flash"
+        elif _valid(gemini_api_key):
             self.client = OpenAI(
                 api_key=gemini_api_key,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -93,7 +102,7 @@ class FridayBrain:
         elif ollama_base_url:
             self.client = OpenAI(api_key="ollama", base_url=ollama_base_url)
             self.provider = "ollama"
-            self.active_model = "llama3.2"
+            self.active_model = ollama_model or "llama3.2"
         elif _valid(api_key):
             self.client = OpenAI(api_key=api_key)
             self.provider = "openai"

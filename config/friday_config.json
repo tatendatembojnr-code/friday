@@ -17,7 +17,7 @@
     "min_smc_score": 55,
     "fvg_min_atr_ratio": 0.15,
     "sl_atr_buffer": 0.4,
-    "default_rr_target": 2.5
+    "default_rr_target": 1.8
   },
   "ai_brain": {
     "enabled": true,
@@ -39,12 +39,12 @@
     "max_drawdown_pct": 8.0,
     "max_open_trades": 3,
     "max_trades_per_symbol": 1,
-    "max_daily_trades": 5,
-    "min_risk_reward": 1.8,
+    "max_daily_trades": 20,
+    "min_risk_reward": 1.5,
     "max_spread_atr_ratio": 0.25,
-    "breakeven_at_rr": 1.0,
-    "trailing_start_rr": 1.5,
-    "trailing_atr_mult": 1.0,
+    "breakeven_at_rr": 0.8,
+    "trailing_start_rr": 1.2,
+    "trailing_atr_mult": 0.6,
     "allowed_sessions": ["London", "New York", "London-NY Overlap"]
   }
 }
