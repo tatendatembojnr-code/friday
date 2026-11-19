@@ -127,6 +127,10 @@ class MT5Connector:
 
         rates = mt5.copy_rates_from_pos(symbol, self._tf_to_mt5(tf_name), 0, bars)
         if rates is None or len(rates) == 0:
+            import time
+            time.sleep(0.5)
+            rates = mt5.copy_rates_from_pos(symbol, self._tf_to_mt5(tf_name), 0, bars)
+        if rates is None or len(rates) == 0:
             self.logger.warning(f"No rates returned for {symbol} {tf_name}")
             return None
 
@@ -221,8 +225,9 @@ class MT5Connector:
         deals = mt5.history_deals_get(start, now)
         if deals is None:
             return 0.0, 0
-        pnl = sum(d.profit + d.swap + d.commission for d in deals)
-        entry_deals = sum(1 for d in deals if d.entry == mt5.DEAL_ENTRY_IN)
+        trade_deals = [d for d in deals if d.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL)]
+        pnl = sum(d.profit + d.swap + d.commission for d in trade_deals if d.entry in (mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_INOUT))
+        entry_deals = sum(1 for d in trade_deals if d.entry == mt5.DEAL_ENTRY_IN)
         return pnl, entry_deals
 
     def _generate_synthetic_ohlc(self, symbol: str, tf_name: str, bars: int) -> pd.DataFrame:
