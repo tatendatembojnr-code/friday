@@ -14,6 +14,7 @@ if str(BASE_DIR) not in sys.path:
 from ai.friday_brain import FridayBrain
 from ai.memory import FridayMemory
 from config.settings import FridaySettings
+from core.ea31337_bridge import EA31337Bridge
 from core.market_context import build_htf_bias, detect_trading_session, summarize_timeframe
 from core.mt5_connector import MT5Connector
 from execution.order_manager import OrderManager
@@ -28,6 +29,7 @@ def run_cycle(
     smc: SMCEngine,
     brain: FridayBrain,
     memory: FridayMemory,
+    bridge: EA31337Bridge,
     risk_mgr: RiskManager,
     order_mgr: OrderManager,
     logger,
@@ -66,6 +68,9 @@ def run_cycle(
 
         spread_atr_ratio = (specs.ask - specs.bid) / setup.atr if setup.atr > 0 else 1.0
         mem_examples = memory.get_recent_context(symbol, limit=settings.ai_brain.max_memory_examples)
+        ea_sig = bridge.get_signal(symbol)
+        if ea_sig:
+            logger.info(f"{symbol} | EA31337 Bridge: {ea_sig.bias} ({ea_sig.consensus_score}%)")
 
         verdict = brain.evaluate(
             setup=setup,
@@ -74,6 +79,7 @@ def run_cycle(
             session=session,
             spread_atr_ratio=spread_atr_ratio,
             memory_examples=mem_examples,
+            ea31337_signal=ea_sig,
         )
 
         logger.info(
@@ -163,6 +169,7 @@ def main() -> None:
     smc = SMCEngine(settings.smc)
     brain = FridayBrain(settings.ai_brain, settings.credentials.openai_api_key)
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
+    bridge = EA31337Bridge(settings.ea31337_bridge)
     risk_mgr = RiskManager(settings.risk)
     order_mgr = OrderManager(
         connector=connector,
@@ -173,7 +180,7 @@ def main() -> None:
 
     try:
         while True:
-            run_cycle(settings, connector, smc, brain, memory, risk_mgr, order_mgr, logger)
+            run_cycle(settings, connector, smc, brain, memory, bridge, risk_mgr, order_mgr, logger)
             if args.once:
                 break
             time.sleep(settings.mode.poll_interval_seconds)
