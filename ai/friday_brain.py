@@ -17,6 +17,7 @@ except ImportError:
     HAS_OPENAI = False
 
 from config.settings import AIBrainConfig
+from core.ea31337_bridge import EA31337Signal
 from core.market_context import TimeframeSummary
 from strategy.smc_engine import TradeSetup
 
@@ -69,6 +70,7 @@ class FridayBrain:
         session: str,
         spread_atr_ratio: float,
         memory_examples: List[Dict],
+        ea31337_signal: Optional[EA31337Signal] = None,
     ) -> AIVerdict:
         if not self.cfg.enabled:
             return AIVerdict(
@@ -80,7 +82,7 @@ class FridayBrain:
             )
 
         if self.client is None:
-            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio)
+            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
 
         recent_candles = recent_ltf_df.tail(12).reset_index()
         recent_candles["time"] = recent_candles["time"].astype(str)
@@ -112,6 +114,15 @@ class FridayBrain:
                 orient="records"
             ),
             "recent_memory": memory_examples,
+            "ea31337_indicator_consensus": (
+                {
+                    "bias": ea31337_signal.bias,
+                    "consensus_score": ea31337_signal.consensus_score,
+                    "active_strategies": ea31337_signal.active_strategies,
+                }
+                if ea31337_signal
+                else None
+            ),
         }
 
         try:
@@ -149,13 +160,14 @@ class FridayBrain:
             )
         except Exception as exc:
             self.logger.warning(f"OpenAI evaluation failed ({exc}); using deterministic fallback.")
-            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio)
+            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
 
     def _deterministic_fallback(
         self,
         setup: TradeSetup,
         tf_summaries: Dict[str, TimeframeSummary],
         spread_atr_ratio: float,
+        ea31337_signal: Optional[EA31337Signal] = None,
     ) -> AIVerdict:
         """Rule-based fallback when no OpenAI key is configured."""
         score = setup.smc_score
@@ -164,6 +176,14 @@ class FridayBrain:
         htf_aligned = "HTFAligned" in setup.confluence_tags
         if htf_aligned:
             score += 5
+        if ea31337_signal:
+            aligned = (setup.direction == "BUY" and ea31337_signal.bias == "BULLISH") or (
+                setup.direction == "SELL" and ea31337_signal.bias == "BEARISH"
+            )
+            if aligned:
+                score += 10
+            elif ea31337_signal.bias != "NEUTRAL":
+                score -= 10
         score = max(0, min(100, score))
         decision = "APPROVE" if score >= self.cfg.min_confidence else "REJECT"
         return AIVerdict(

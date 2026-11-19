@@ -50,6 +50,14 @@ class AIBrainConfig:
 
 
 @dataclass
+class EA31337BridgeConfig:
+    enabled: bool = True
+    signal_file: str = "data/ea31337_signals.json"
+    max_age_seconds: int = 900
+    alignment_bonus_score: int = 10
+
+
+@dataclass
 class RiskConfig:
     risk_per_trade_pct: float = 1.0
     max_daily_loss_pct: float = 3.0
@@ -81,6 +89,7 @@ class FridaySettings:
     trading: TradingConfig = field(default_factory=TradingConfig)
     smc: SMCConfig = field(default_factory=SMCConfig)
     ai_brain: AIBrainConfig = field(default_factory=AIBrainConfig)
+    ea31337_bridge: EA31337BridgeConfig = field(default_factory=EA31337BridgeConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     credentials: Credentials = field(default_factory=Credentials)
 
@@ -108,6 +117,7 @@ class FridaySettings:
             trading=TradingConfig(**raw.get("trading", {})),
             smc=SMCConfig(**raw.get("smc", {})),
             ai_brain=AIBrainConfig(**raw.get("ai_brain", {})),
+            ea31337_bridge=EA31337BridgeConfig(**raw.get("ea31337_bridge", {})),
             risk=RiskConfig(**raw.get("risk", {})),
             credentials=creds,
         )

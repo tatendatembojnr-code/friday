@@ -10,7 +10,8 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from ai.memory import FridayMemory
-from config.settings import Credentials, RiskConfig, SMCConfig
+from config.settings import Credentials, EA31337BridgeConfig, RiskConfig, SMCConfig
+from core.ea31337_bridge import EA31337Bridge
 from core.mt5_connector import AccountSnapshot, MT5Connector, SymbolSpecs
 from risk.risk_manager import RiskManager
 from strategy.smc_engine import SMCEngine
@@ -73,3 +74,40 @@ def test_memory_journal_roundtrip(tmp_path):
     recent = mem.get_recent_context("EURUSD", limit=3)
     assert len(recent) == 1
     assert recent[0]["ai_decision"] == "APPROVE"
+
+
+def test_ea31337_bridge_reads_fresh_and_ignores_stale(tmp_path):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    sig_file = tmp_path / "ea31337_signals.json"
+    fresh_ts = datetime.now(timezone.utc).isoformat()
+    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    sig_file.write_text(
+        json.dumps(
+            {
+                "EURUSD": {
+                    "bias": "BULLISH",
+                    "consensus_score": 85,
+                    "active_strategies": ["EMA_Cross", "MACD_Trend"],
+                    "timestamp": fresh_ts,
+                },
+                "GBPUSD": {
+                    "bias": "BEARISH",
+                    "consensus_score": 70,
+                    "active_strategies": ["RSI_Momentum"],
+                    "timestamp": stale_ts,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    bridge = EA31337Bridge(EA31337BridgeConfig(enabled=True, signal_file=str(sig_file), max_age_seconds=900))
+    eur = bridge.get_signal("EURUSD")
+    assert eur is not None
+    assert eur.bias == "BULLISH"
+    assert eur.consensus_score == 85
+
+    gbp = bridge.get_signal("GBPUSD")
+    assert gbp is None

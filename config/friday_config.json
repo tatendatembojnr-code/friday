@@ -27,6 +27,12 @@
     "max_memory_examples": 5,
     "allow_tp_sl_refinement": true
   },
+  "ea31337_bridge": {
+    "enabled": true,
+    "signal_file": "data/ea31337_signals.json",
+    "max_age_seconds": 900,
+    "alignment_bonus_score": 10
+  },
   "risk": {
     "risk_per_trade_pct": 1.0,
     "max_daily_loss_pct": 3.0,
