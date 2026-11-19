@@ -29,7 +29,18 @@ if not exist ".venv\Scripts\python.exe" (
         echo [ERROR] Python 3.10+ is required and must be on PATH.
         exit /b 1
     )
-    echo [FRIDAY] Installing dependencies...
+)
+
+:: 2. Run preflight credential check (zero-dependency)
+".venv\Scripts\python.exe" preflight.py %ARGS%
+if errorlevel 1 (
+    exit /b 1
+)
+
+:: 3. Verify required packages are installed
+".venv\Scripts\python.exe" -c "import MetaTrader5, pandas, numpy, openai, dotenv, colorlog" 2>nul
+if errorlevel 1 (
+    echo [FRIDAY] Installing missing dependencies...
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt
     if errorlevel 1 (
         echo [ERROR] Failed to install dependencies. Check your internet connection and retry.
@@ -37,12 +48,6 @@ if not exist ".venv\Scripts\python.exe" (
     )
 )
 
-:: 2. Run preflight credential check
-".venv\Scripts\python.exe" preflight.py %ARGS%
-if errorlevel 1 (
-    exit /b 1
-)
-
-:: 3. Launch FRIDAY
+:: 4. Launch FRIDAY
 echo [FRIDAY] Starting bot...
 ".venv\Scripts\python.exe" main.py %ARGS%

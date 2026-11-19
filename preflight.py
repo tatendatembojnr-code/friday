@@ -1,11 +1,11 @@
-"""Preflight credential and environment validator for FRIDAY."""
+"""Zero-dependency preflight credential and environment validator for FRIDAY."""
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
-
-from config.settings import FridaySettings
+from typing import Dict
 
 
 PLACEHOLDERS = {
@@ -15,6 +15,17 @@ PLACEHOLDERS = {
     "sk-your-openai-api-key",
     "",
 }
+
+
+def _parse_env(env_file: Path) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, val = stripped.split("=", 1)
+        values[key.strip()] = val.strip().strip('"').strip("'")
+    return values
 
 
 def main() -> int:
@@ -32,31 +43,32 @@ def main() -> int:
             print("[FRIDAY] Or run with: run friday --simulate")
             return 1
 
-    settings = FridaySettings.load()
-    creds = settings.credentials
-
     if simulate:
         print("[FRIDAY] Preflight OK (simulation mode).")
         return 0
 
-    missing = []
-    if not creds.mt5_login or str(creds.mt5_login) in PLACEHOLDERS:
-        missing.append("MT5_LOGIN")
-    if creds.mt5_password in PLACEHOLDERS:
-        missing.append("MT5_PASSWORD")
-    if creds.mt5_server in PLACEHOLDERS:
-        missing.append("MT5_SERVER")
-    if creds.openai_api_key in PLACEHOLDERS:
-        missing.append("OPENAI_API_KEY (optional if using fallback, recommended for full AI)")
+    env_vals = _parse_env(env_file) if env_file.exists() else {}
+    login = os.getenv("MT5_LOGIN", env_vals.get("MT5_LOGIN", ""))
+    password = os.getenv("MT5_PASSWORD", env_vals.get("MT5_PASSWORD", ""))
+    server = os.getenv("MT5_SERVER", env_vals.get("MT5_SERVER", ""))
+    openai_key = os.getenv("OPENAI_API_KEY", env_vals.get("OPENAI_API_KEY", ""))
 
-    if any(k in missing for k in ("MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER")):
+    missing_mt5 = []
+    if not login.isdigit() or login in PLACEHOLDERS:
+        missing_mt5.append("MT5_LOGIN")
+    if password in PLACEHOLDERS:
+        missing_mt5.append("MT5_PASSWORD")
+    if server in PLACEHOLDERS:
+        missing_mt5.append("MT5_SERVER")
+
+    if missing_mt5:
         print("[FRIDAY] Missing or placeholder MT5 credentials in .env:")
-        for item in missing:
+        for item in missing_mt5:
             print(f"  - {item}")
         print("[FRIDAY] Update .env and try again, or test with: run friday --simulate")
         return 1
 
-    if missing:
+    if openai_key in PLACEHOLDERS:
         print("[FRIDAY] Warning: OPENAI_API_KEY not set; FRIDAY will use local deterministic fallback.")
 
     print("[FRIDAY] Preflight checks passed.")
