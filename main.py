@@ -169,7 +169,13 @@ def main() -> None:
         sys.exit(1)
 
     smc = SMCEngine(settings.smc)
-    brain = FridayBrain(settings.ai_brain, settings.credentials.openai_api_key)
+    brain = FridayBrain(
+        settings.ai_brain,
+        api_key=settings.credentials.openai_api_key,
+        gemini_api_key=settings.credentials.gemini_api_key,
+        groq_api_key=settings.credentials.groq_api_key,
+        ollama_base_url=settings.credentials.ollama_base_url,
+    )
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
     bridge = EA31337Bridge(settings.ea31337_bridge)
     risk_mgr = RiskManager(settings.risk)

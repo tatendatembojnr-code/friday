@@ -54,13 +54,50 @@ Rules:
 
 
 class FridayBrain:
-    """Evaluates SMC setups using OpenAI structured reasoning and adaptive memory."""
+    """Evaluates SMC setups using free/paid LLM providers (Gemini, Groq, OpenAI, Ollama) + adaptive memory."""
 
-    def __init__(self, config: AIBrainConfig, api_key: str):
+    def __init__(
+        self,
+        config: AIBrainConfig,
+        api_key: str = "",
+        gemini_api_key: str = "",
+        groq_api_key: str = "",
+        ollama_base_url: str = "",
+    ):
         self.logger = logging.getLogger("FRIDAY")
         self.cfg = config
-        self.api_key = api_key
-        self.client = OpenAI(api_key=api_key) if (HAS_OPENAI and api_key and "your-" not in api_key) else None
+        self.client = None
+        self.provider = "fallback"
+        self.active_model = config.model
+
+        if not HAS_OPENAI:
+            return
+
+        def _valid(k: str) -> bool:
+            return bool(k and "your-" not in k.lower())
+
+        if _valid(gemini_api_key):
+            self.client = OpenAI(
+                api_key=gemini_api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            )
+            self.provider = "gemini"
+            self.active_model = "gemini-2.5-flash"
+        elif _valid(groq_api_key):
+            self.client = OpenAI(
+                api_key=groq_api_key,
+                base_url="https://api.groq.com/openai/v1",
+            )
+            self.provider = "groq"
+            self.active_model = "llama-3.3-70b-versatile"
+        elif ollama_base_url:
+            self.client = OpenAI(api_key="ollama", base_url=ollama_base_url)
+            self.provider = "ollama"
+            self.active_model = "llama3.2"
+        elif _valid(api_key):
+            self.client = OpenAI(api_key=api_key)
+            self.provider = "openai"
+            self.active_model = config.model
 
     def evaluate(
         self,
@@ -127,7 +164,7 @@ class FridayBrain:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.cfg.model,
+                model=self.active_model,
                 temperature=self.cfg.temperature,
                 response_format={"type": "json_object"},
                 messages=[
@@ -156,7 +193,7 @@ class FridayBrain:
                 reasoning=reasoning,
                 refined_sl=float(refined_sl) if refined_sl is not None else None,
                 refined_tp=float(refined_tp) if refined_tp is not None else None,
-                source="openai",
+                source=self.provider,
             )
         except Exception as exc:
             self.logger.warning(f"OpenAI evaluation failed ({exc}); using deterministic fallback.")
