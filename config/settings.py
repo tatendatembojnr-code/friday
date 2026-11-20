@@ -60,6 +60,7 @@ class EA31337BridgeConfig:
 @dataclass
 class RiskConfig:
     risk_per_trade_pct: float = 1.0
+    max_single_trade_risk_pct: float = 5.0
     max_daily_loss_pct: float = 3.0
     max_drawdown_pct: float = 8.0
     max_open_trades: int = 3
