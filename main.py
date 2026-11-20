@@ -35,6 +35,7 @@ def run_cycle(
     logger,
 ) -> None:
     session = detect_trading_session()
+    order_mgr.manage_open_positions()
     account = connector.get_account_snapshot()
     today_pnl, today_trades = connector.get_today_closed_pnl()
     open_positions = connector.get_open_positions(magic=settings.mode.magic_number)
@@ -67,7 +68,11 @@ def run_cycle(
                         open_positions = connector.get_open_positions(magic=settings.mode.magic_number)
 
         if setup is None:
-            logger.info(f"{symbol}: No qualifying SMC setup (HTF={htf_bias}).")
+            logger.debug(f"{symbol}: No qualifying SMC setup (HTF={htf_bias}).")
+            continue
+
+        symbol_open_count = sum(1 for p in open_positions if p["symbol"] == symbol)
+        if len(open_positions) >= settings.risk.max_open_trades or symbol_open_count >= settings.risk.max_trades_per_symbol:
             continue
 
         specs = connector.get_symbol_specs(symbol)
@@ -110,7 +115,6 @@ def run_cycle(
         lot_size = 0.0
 
         if ai_passed:
-            symbol_open_count = sum(1 for p in open_positions if p["symbol"] == symbol)
             allowed, lot_size, reason = risk_mgr.validate_and_size(
                 setup=setup,
                 specs=specs,

@@ -2,7 +2,7 @@
   "bot_name": "FRIDAY",
   "mode": {
     "dry_run": true,
-    "poll_interval_seconds": 60,
+    "poll_interval_seconds": 5,
     "magic_number": 777001
   },
   "trading": {
