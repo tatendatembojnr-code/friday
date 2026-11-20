@@ -17,10 +17,13 @@ from config.settings import FridaySettings
 from core.ea31337_bridge import EA31337Bridge
 from core.market_context import build_htf_bias, detect_trading_session, summarize_timeframe
 from core.mt5_connector import MT5Connector
+from core.tradingview_ta import TradingViewClient
 from execution.order_manager import OrderManager
+from risk.protections import ProtectionManager
 from risk.risk_manager import RiskManager
 from strategy.smc_engine import SMCEngine
 from utils.logger import setup_logger
+from utils.notifier import TelegramNotifier
 
 
 def run_cycle(
@@ -30,6 +33,9 @@ def run_cycle(
     brain: FridayBrain,
     memory: FridayMemory,
     bridge: EA31337Bridge,
+    tv_client: TradingViewClient,
+    protections: ProtectionManager,
+    notifier: TelegramNotifier,
     risk_mgr: RiskManager,
     order_mgr: OrderManager,
     logger,
@@ -84,6 +90,11 @@ def run_cycle(
         if len(open_positions) >= settings.risk.max_open_trades or symbol_open_count >= settings.risk.max_trades_per_symbol:
             continue
 
+        locked, lock_reason = protections.is_symbol_locked(symbol)
+        if locked:
+            logger.info(f"{symbol}: {lock_reason}")
+            continue
+
         specs = connector.get_symbol_specs(symbol)
         if specs is None:
             continue
@@ -93,6 +104,9 @@ def run_cycle(
         ea_sig = bridge.get_signal(symbol)
         if ea_sig:
             logger.info(f"{symbol} | EA31337 Bridge: {ea_sig.bias} ({ea_sig.consensus_score}%)")
+        tv_sig = None if connector.simulate else tv_client.get_consensus(symbol)
+        if tv_sig:
+            logger.info(f"{symbol} | TradingView TA: {tv_sig.recommendation} ({tv_sig.score})")
 
         verdict = brain.evaluate(
             setup=setup,
@@ -102,6 +116,7 @@ def run_cycle(
             spread_atr_ratio=spread_atr_ratio,
             memory_examples=mem_examples,
             ea31337_signal=ea_sig,
+            tv_consensus=tv_sig,
         )
 
         logger.info(
@@ -141,6 +156,10 @@ def run_cycle(
                 executed = bool(res.get("success"))
                 if executed:
                     today_trades += 1
+                    notifier.send(
+                        f"*FRIDAY* {setup.direction} `{symbol}` | Lots: `{lot_size}` | "
+                        f"SMC: `{setup.smc_score}` | AI: `{verdict.confidence}%`"
+                    )
             else:
                 logger.info(f"{symbol}: Blocked by RiskManager -> {reason}")
 
@@ -203,6 +222,9 @@ def main() -> None:
     )
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
     bridge = EA31337Bridge(settings.ea31337_bridge)
+    tv_client = TradingViewClient()
+    protections = ProtectionManager()
+    notifier = TelegramNotifier()
     risk_mgr = RiskManager(settings.risk)
     order_mgr = OrderManager(
         connector=connector,
@@ -213,7 +235,10 @@ def main() -> None:
 
     try:
         while True:
-            run_cycle(settings, connector, smc, brain, memory, bridge, risk_mgr, order_mgr, logger)
+            run_cycle(
+                settings, connector, smc, brain, memory, bridge,
+                tv_client, protections, notifier, risk_mgr, order_mgr, logger,
+            )
             if args.once:
                 break
             time.sleep(settings.mode.poll_interval_seconds)

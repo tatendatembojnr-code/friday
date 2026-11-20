@@ -175,3 +175,19 @@ def test_small_account_sizing_and_over_risk_protection():
     )
     assert allowed_eur
     assert lots_eur == 0.01
+
+
+def test_stoploss_guard_cooldown_blocks_revenge_trading():
+    from datetime import datetime, timezone
+    from risk.protections import ProtectionManager
+
+    pm = ProtectionManager(stoploss_limit=2, lookback_minutes=60, cooldown_minutes=30)
+    now = datetime.now(timezone.utc)
+    pm.record_trade_result("EURUSD", -50.0, now=now)
+    locked, _ = pm.is_symbol_locked("EURUSD", now=now)
+    assert not locked
+
+    pm.record_trade_result("EURUSD", -40.0, now=now)
+    locked, reason = pm.is_symbol_locked("EURUSD", now=now)
+    assert locked
+    assert "StoplossGuard" in reason
