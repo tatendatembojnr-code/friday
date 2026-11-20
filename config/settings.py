@@ -64,7 +64,8 @@ class RiskConfig:
     max_drawdown_pct: float = 8.0
     max_open_trades: int = 3
     max_trades_per_symbol: int = 1
-    max_daily_trades: int = 5
+    max_usd_exposure: int = 2
+    max_daily_trades: int = 20
     min_risk_reward: float = 1.8
     max_spread_atr_ratio: float = 0.25
     breakeven_at_rr: float = 1.0

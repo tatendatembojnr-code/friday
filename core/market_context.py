@@ -26,6 +26,23 @@ def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
+def compute_adx(df: pd.DataFrame, period: int = 14) -> float:
+    """Computes latest ADX(14) to measure trend strength vs choppy range."""
+    if len(df) < period * 2:
+        return 25.0
+    high, low, close = df["high"], df["low"], df["close"]
+    plus_dm = high.diff().clip(lower=0)
+    minus_dm = (-low.diff()).clip(lower=0)
+    plus_dm = plus_dm.where(plus_dm > minus_dm, 0.0)
+    minus_dm = minus_dm.where(minus_dm > plus_dm, 0.0)
+    atr = compute_atr(df, period).replace(0, np.nan)
+    plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
+    dx = (100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan))
+    adx = float(dx.rolling(period).mean().iloc[-1])
+    return 25.0 if np.isnan(adx) else round(adx, 2)
+
+
 def detect_trading_session(now_utc: datetime | None = None) -> str:
     now = now_utc or datetime.now(timezone.utc)
     hour = now.hour
@@ -49,6 +66,8 @@ class TimeframeSummary:
     rsi_14: float
     atr_14: float
     last_close: float
+    adx_14: float = 25.0
+    vol_ratio: float = 1.0
 
 
 def summarize_timeframe(df: pd.DataFrame, tf_name: str) -> TimeframeSummary:
@@ -56,13 +75,19 @@ def summarize_timeframe(df: pd.DataFrame, tf_name: str) -> TimeframeSummary:
     ema20 = float(close.ewm(span=20, adjust=False).mean().iloc[-1])
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
     rsi14 = float(compute_rsi(close, 14).iloc[-1])
-    atr14 = float(compute_atr(df, 14).iloc[-1])
+    atr_series = compute_atr(df, 14)
+    atr14 = float(atr_series.iloc[-1])
+    atr_baseline = float(atr_series.rolling(50).mean().iloc[-1]) if len(df) >= 65 else atr14
+    adx14 = compute_adx(df, 14)
     last_close = float(close.iloc[-1])
 
     if np.isnan(rsi14):
         rsi14 = 50.0
     if np.isnan(atr14):
         atr14 = float((df["high"] - df["low"]).mean())
+    if np.isnan(atr_baseline) or atr_baseline <= 0:
+        atr_baseline = atr14
+    vol_ratio = round(atr14 / max(atr_baseline, 1e-9), 2)
 
     spread_pct = abs(ema20 - ema50) / max(last_close, 1e-9)
     if ema20 > ema50 and last_close > ema20 and spread_pct > 0.0003:
@@ -80,6 +105,8 @@ def summarize_timeframe(df: pd.DataFrame, tf_name: str) -> TimeframeSummary:
         rsi_14=round(rsi14, 2),
         atr_14=round(atr14, 6),
         last_close=round(last_close, 6),
+        adx_14=adx14,
+        vol_ratio=vol_ratio,
     )
 
 

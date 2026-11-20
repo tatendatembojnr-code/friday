@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Tuple
+from typing import Dict, List, Optional, Tuple
 
 from config.settings import RiskConfig
 from core.mt5_connector import AccountSnapshot, SymbolSpecs
 from strategy.smc_engine import TradeSetup
+
+
+def usd_direction_sign(symbol: str, side: str) -> int:
+    """Returns +1 if trade is Long USD, -1 if Short USD, 0 if non-USD cross."""
+    sym = symbol.upper()
+    s = side.upper()
+    if sym.startswith("USD"):
+        return 1 if s == "BUY" else -1
+    if sym.endswith("USD") or "XAUUSD" in sym:
+        return -1 if s == "BUY" else 1
+    return 0
 
 
 class RiskManager:
@@ -29,6 +40,8 @@ class RiskManager:
         today_trades: int,
         session: str,
         symbol_open_count: int = 0,
+        open_positions: Optional[List[Dict]] = None,
+        vol_ratio: float = 1.0,
     ) -> Tuple[bool, float, str]:
         if account.balance <= 0:
             return False, 0.0, "Account balance is zero or unavailable."
@@ -50,6 +63,16 @@ class RiskManager:
         if symbol_open_count >= self.cfg.max_trades_per_symbol:
             return False, 0.0, f"Max open trades per symbol ({self.cfg.max_trades_per_symbol}) reached for {setup.symbol}."
 
+        if open_positions is not None and self.cfg.max_usd_exposure > 0:
+            net_usd = sum(usd_direction_sign(p["symbol"], p["type"]) for p in open_positions)
+            proposed = usd_direction_sign(setup.symbol, setup.direction)
+            if abs(net_usd + proposed) > self.cfg.max_usd_exposure and abs(net_usd + proposed) > abs(net_usd):
+                return (
+                    False,
+                    0.0,
+                    f"USD correlation cap ({self.cfg.max_usd_exposure}) reached (net_usd={net_usd}, {setup.direction} {setup.symbol}).",
+                )
+
         if today_trades >= self.cfg.max_daily_trades:
             return False, 0.0, f"Max daily trades ({self.cfg.max_daily_trades}) reached."
 
@@ -66,18 +89,19 @@ class RiskManager:
         if sl_dist <= 0 or (tp_dist / sl_dist) < self.cfg.min_risk_reward:
             return False, 0.0, f"Risk-to-reward below minimum {self.cfg.min_risk_reward}."
 
-        lot_size = self.calculate_lot_size(account.balance, sl_dist, specs)
+        risk_mult = 0.5 if vol_ratio > 1.8 else 1.0
+        lot_size = self.calculate_lot_size(account.balance, sl_dist, specs, risk_mult=risk_mult)
         if lot_size <= 0:
             return False, 0.0, "Calculated lot size is 0."
 
         return True, lot_size, "Approved by RiskManager"
 
-    def calculate_lot_size(self, balance: float, sl_distance: float, specs: SymbolSpecs) -> float:
+    def calculate_lot_size(self, balance: float, sl_distance: float, specs: SymbolSpecs, risk_mult: float = 1.0) -> float:
         """Accurate MT5 lot sizing: risk_amount / ((sl_distance / tick_size) * tick_value)."""
         if sl_distance <= 0 or specs.trade_tick_size <= 0 or specs.trade_tick_value <= 0:
             return 0.0
 
-        risk_amount = balance * (self.cfg.risk_per_trade_pct / 100.0)
+        risk_amount = balance * (self.cfg.risk_per_trade_pct / 100.0) * risk_mult
         loss_per_lot = (sl_distance / specs.trade_tick_size) * specs.trade_tick_value
         if loss_per_lot <= 0:
             return 0.0

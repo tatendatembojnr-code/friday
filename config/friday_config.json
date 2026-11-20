@@ -39,6 +39,7 @@
     "max_drawdown_pct": 8.0,
     "max_open_trades": 3,
     "max_trades_per_symbol": 1,
+    "max_usd_exposure": 2,
     "max_daily_trades": 20,
     "min_risk_reward": 1.5,
     "max_spread_atr_ratio": 0.25,

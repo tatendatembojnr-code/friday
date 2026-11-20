@@ -26,6 +26,7 @@ class OrderManager:
         self.risk_cfg = risk_cfg
         self.magic = magic_number
         self.dry_run = dry_run or connector.simulate
+        self._scaled_out_tickets: set[int] = set()
 
     def execute_setup(self, setup: TradeSetup, lot_size: float) -> Dict:
         specs = self.connector.get_symbol_specs(setup.symbol)
@@ -99,6 +100,8 @@ class OrderManager:
 
             if pos["type"] == "BUY":
                 rr_achieved = (curr - entry) / risk_dist
+                if rr_achieved >= self.risk_cfg.breakeven_at_rr and pos["ticket"] not in self._scaled_out_tickets:
+                    self._partial_close(pos, specs)
                 new_sl = None
                 if rr_achieved >= self.risk_cfg.breakeven_at_rr and sl < entry:
                     new_sl = round(entry + specs.point * 5, specs.digits)
@@ -111,6 +114,8 @@ class OrderManager:
 
             else:  # SELL
                 rr_achieved = (entry - curr) / risk_dist
+                if rr_achieved >= self.risk_cfg.breakeven_at_rr and pos["ticket"] not in self._scaled_out_tickets:
+                    self._partial_close(pos, specs)
                 new_sl = None
                 if rr_achieved >= self.risk_cfg.breakeven_at_rr and sl > entry:
                     new_sl = round(entry - specs.point * 5, specs.digits)
@@ -120,6 +125,36 @@ class OrderManager:
                         new_sl = candidate
                 if new_sl and new_sl < sl:
                     self._modify_sl(pos["ticket"], pos["symbol"], new_sl, pos["tp"])
+
+    def _partial_close(self, pos: Dict, specs) -> None:
+        """Locks in 50% of the position at 1R profit while letting the remainder trail."""
+        import math
+        half_vol = math.floor((pos["volume"] * 0.5) / specs.volume_step) * specs.volume_step
+        half_vol = round(half_vol, 2)
+        if half_vol < specs.volume_min or (pos["volume"] - half_vol) < specs.volume_min:
+            self._scaled_out_tickets.add(pos["ticket"])
+            return
+        close_type = mt5.ORDER_TYPE_SELL if pos["type"] == "BUY" else mt5.ORDER_TYPE_BUY
+        price = specs.bid if pos["type"] == "BUY" else specs.ask
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": pos["symbol"],
+            "volume": half_vol,
+            "type": close_type,
+            "position": pos["ticket"],
+            "price": price,
+            "deviation": 20,
+            "magic": self.magic,
+            "comment": "FRIDAY_SCALE_OUT",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._resolve_filling_mode(pos["symbol"]),
+        }
+        res = mt5.order_send(request)
+        if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+            self._scaled_out_tickets.add(pos["ticket"])
+            self.logger.info(
+                f"PARTIAL TP (50% LOCKED) | Ticket={pos['ticket']} ({pos['symbol']}) | Closed {half_vol} lots"
+            )
 
     def close_position(self, pos: Dict, reason: str = "") -> bool:
         """Close an open position at market (e.g., on AI/SMC reversal)."""

@@ -111,3 +111,28 @@ def test_ea31337_bridge_reads_fresh_and_ignores_stale(tmp_path):
 
     gbp = bridge.get_signal("GBPUSD")
     assert gbp is None
+
+
+def test_usd_correlation_cap_blocks_third_correlated_trade():
+    from strategy.smc_engine import TradeSetup
+
+    rm = RiskManager(RiskConfig(risk_per_trade_pct=1.0, max_usd_exposure=2, allowed_sessions=[]))
+    specs = SymbolSpecs(
+        symbol="EURUSD", digits=5, point=0.00001, trade_tick_size=0.00001, trade_tick_value=1.0,
+        volume_min=0.01, volume_max=100.0, volume_step=0.01, bid=1.085, ask=1.0851, spread_points=10.0,
+    )
+    setup = TradeSetup(
+        symbol="EURUSD", direction="SELL", entry=1.085, stop_loss=1.087, take_profit=1.081,
+        risk_reward=2.0, smc_score=80, atr=0.001, htf_bias="BEARISH",
+    )
+    open_pos = [
+        {"symbol": "GBPUSD", "type": "SELL"},  # +1 USD
+        {"symbol": "XAUUSD", "type": "SELL"},  # +1 USD
+    ]
+    allowed, lots, reason = rm.validate_and_size(
+        setup=setup, specs=specs, account=AccountSnapshot(10000, 10000, 10000, 0),
+        open_positions_count=2, today_pnl=0.0, today_trades=2, session="London",
+        symbol_open_count=0, open_positions=open_pos,
+    )
+    assert not allowed
+    assert "USD correlation cap" in reason
