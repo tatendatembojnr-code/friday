@@ -129,7 +129,11 @@ class SMCEngine:
                 score += 10
                 tags.append("BullishMomentum")
 
-            if score >= self.cfg.min_smc_score and (swept_low or bos_up or (htf_bias == "BULLISH" and (ob or fvg))):
+            ema20 = float(df["close"].ewm(span=20, adjust=False).mean().iloc[-1])
+            ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
+            ltf_bullish = recent_close > ema20 and ema20 >= ema50
+
+            if score >= self.cfg.min_smc_score and (swept_low or (bos_up and ltf_bullish) or (htf_bias == "BULLISH" and ltf_bullish and (ob or fvg))):
                 anchor_low = min(float(recent_lows.min()), ob[0] if ob else float(recent_lows.min()))
                 sl = min(anchor_low, recent_close - atr) - (atr * self.cfg.sl_atr_buffer)
                 risk = recent_close - sl
@@ -183,7 +187,11 @@ class SMCEngine:
                 score += 10
                 tags.append("BearishMomentum")
 
-            if score >= self.cfg.min_smc_score and (swept_high or bos_down or (htf_bias == "BEARISH" and (ob or fvg))):
+            ema20 = float(df["close"].ewm(span=20, adjust=False).mean().iloc[-1])
+            ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
+            ltf_bearish = recent_close < ema20 and ema20 <= ema50
+
+            if score >= self.cfg.min_smc_score and (swept_high or (bos_down and ltf_bearish) or (htf_bias == "BEARISH" and ltf_bearish and (ob or fvg))):
                 anchor_high = max(float(recent_highs.max()), ob[1] if ob else float(recent_highs.max()))
                 sl = max(anchor_high, recent_close + atr) + (atr * self.cfg.sl_atr_buffer)
                 risk = sl - recent_close

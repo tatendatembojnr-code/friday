@@ -99,6 +99,56 @@ class FridayMemory:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def sync_closed_deal(self, ticket: int, symbol: str, direction: str, pnl: float) -> bool:
+        """Records a closed MT5 deal once (idempotent by ticket) so FRIDAY learns from real outcomes."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS closed_deals (
+                    ticket INTEGER PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    pnl REAL NOT NULL,
+                    outcome TEXT NOT NULL
+                )
+                """
+            )
+            exists = conn.execute("SELECT 1 FROM closed_deals WHERE ticket = ?", (ticket,)).fetchone()
+            if exists:
+                return False
+            outcome = "WIN" if pnl > 0 else "LOSS"
+            conn.execute(
+                "INSERT INTO closed_deals (ticket, timestamp, symbol, direction, pnl, outcome) VALUES (?, ?, ?, ?, ?, ?)",
+                (ticket, datetime.now(timezone.utc).isoformat(), symbol, direction, float(pnl), outcome),
+            )
+            conn.commit()
+            return True
+
+    def get_symbol_win_rate(self, symbol: str, last_n: int = 10) -> tuple[int, float]:
+        """Returns (trade_count, win_rate_0_to_1) for the last N closed deals on a symbol."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS closed_deals (
+                    ticket INTEGER PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    pnl REAL NOT NULL,
+                    outcome TEXT NOT NULL
+                )
+                """
+            )
+            rows = conn.execute(
+                "SELECT outcome FROM closed_deals WHERE symbol = ? ORDER BY ticket DESC LIMIT ?",
+                (symbol, last_n),
+            ).fetchall()
+        if not rows:
+            return 0, 1.0
+        wins = sum(1 for (o,) in rows if o == "WIN")
+        return len(rows), wins / len(rows)
+
     def get_performance_summary(self) -> Dict[str, float]:
         with self._connect() as conn:
             row = conn.execute(
