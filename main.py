@@ -58,7 +58,16 @@ def run_cycle(
             continue
 
         htf_bias = build_htf_bias(tf_summaries)
+        ctx_tf = tf_summaries.get(settings.trading.context_timeframe)
+        adx_14 = ctx_tf.adx_14 if ctx_tf else 25.0
+        vol_ratio = ctx_tf.vol_ratio if ctx_tf else 1.0
+
         setup = smc.analyze(df_ltf, symbol, htf_bias)
+
+        # Choppy-market filter: require liquidity sweep when ADX < 18
+        if setup is not None and adx_14 < 18.0 and not any("Sweep" in t for t in setup.confluence_tags):
+            logger.debug(f"{symbol}: Skipping continuation in choppy regime (ADX={adx_14}).")
+            setup = None
 
         # Smart auto-close: if an open trade is contradicted by a strong opposing SMC setup, close it
         if setup is not None and setup.smc_score >= 70:
@@ -124,6 +133,8 @@ def run_cycle(
                 today_trades=today_trades,
                 session=session,
                 symbol_open_count=symbol_open_count,
+                open_positions=open_positions,
+                vol_ratio=vol_ratio,
             )
             if allowed:
                 res = order_mgr.execute_setup(setup, lot_size)
