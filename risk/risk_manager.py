@@ -57,8 +57,14 @@ class RiskManager:
         if self.cfg.allowed_sessions and session not in self.cfg.allowed_sessions:
             return False, 0.0, f"Session '{session}' outside allowed sessions {self.cfg.allowed_sessions}."
 
-        if open_positions_count >= self.cfg.max_open_trades:
-            return False, 0.0, f"Max open trades ({self.cfg.max_open_trades}) reached."
+        effective_max_open = self.cfg.max_open_trades
+        if account.balance < 250:
+            effective_max_open = min(effective_max_open, 1)
+        elif account.balance < 1000:
+            effective_max_open = min(effective_max_open, 2)
+
+        if open_positions_count >= effective_max_open:
+            return False, 0.0, f"Max open trades ({effective_max_open}) reached for balance ${account.balance:.2f}."
 
         if symbol_open_count >= self.cfg.max_trades_per_symbol:
             return False, 0.0, f"Max open trades per symbol ({self.cfg.max_trades_per_symbol}) reached for {setup.symbol}."
@@ -93,6 +99,19 @@ class RiskManager:
         lot_size = self.calculate_lot_size(account.balance, sl_dist, specs, risk_mult=risk_mult)
         if lot_size <= 0:
             return False, 0.0, "Calculated lot size is 0."
+
+        # Small-account protection: ensure even volume_min doesn't exceed max_single_trade_risk_pct
+        loss_per_lot = (sl_dist / specs.trade_tick_size) * specs.trade_tick_value if specs.trade_tick_size > 0 else 0.0
+        actual_risk_pct = ((lot_size * loss_per_lot) / account.balance) * 100.0 if loss_per_lot > 0 else 0.0
+        if actual_risk_pct > self.cfg.max_single_trade_risk_pct:
+            return (
+                False,
+                0.0,
+                f"Min lot ({lot_size}) risks {actual_risk_pct:.2f}% > cap {self.cfg.max_single_trade_risk_pct}% on ${account.balance:.2f}.",
+            )
+
+        if account.margin_free < account.balance * 0.15:
+            return False, 0.0, f"Insufficient free margin (${account.margin_free:.2f})."
 
         return True, lot_size, "Approved by RiskManager"
 

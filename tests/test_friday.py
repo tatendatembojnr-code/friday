@@ -136,3 +136,42 @@ def test_usd_correlation_cap_blocks_third_correlated_trade():
     )
     assert not allowed
     assert "USD correlation cap" in reason
+
+
+def test_small_account_sizing_and_over_risk_protection():
+    from strategy.smc_engine import TradeSetup
+
+    rm = RiskManager(RiskConfig(risk_per_trade_pct=1.0, max_single_trade_risk_pct=5.0, allowed_sessions=[]))
+    small_acc = AccountSnapshot(balance=50.0, equity=50.0, margin_free=50.0, profit=0.0)
+
+    # 1. XAUUSD with $25 SL -> 0.01 lot risks $25 (50% of $50) -> MUST be blocked
+    gold_specs = SymbolSpecs(
+        symbol="XAUUSD", digits=2, point=0.01, trade_tick_size=0.01, trade_tick_value=1.0,
+        volume_min=0.01, volume_max=100.0, volume_step=0.01, bid=2650.0, ask=2650.2, spread_points=20.0,
+    )
+    gold_setup = TradeSetup(
+        symbol="XAUUSD", direction="BUY", entry=2650.0, stop_loss=2625.0, take_profit=2700.0,
+        risk_reward=2.0, smc_score=85, atr=10.0, htf_bias="BULLISH",
+    )
+    allowed, _, reason = rm.validate_and_size(
+        setup=gold_setup, specs=gold_specs, account=small_acc,
+        open_positions_count=0, today_pnl=0.0, today_trades=0, session="London",
+    )
+    assert not allowed
+    assert "risks" in reason
+
+    # 2. EURUSD with 15-pip (0.0015) SL -> 0.01 lot risks $1.50 (3.0% <= 5.0%) -> MUST be approved at 0.01
+    eur_specs = SymbolSpecs(
+        symbol="EURUSD", digits=5, point=0.00001, trade_tick_size=0.00001, trade_tick_value=1.0,
+        volume_min=0.01, volume_max=100.0, volume_step=0.01, bid=1.085, ask=1.0851, spread_points=10.0,
+    )
+    eur_setup = TradeSetup(
+        symbol="EURUSD", direction="BUY", entry=1.085, stop_loss=1.0835, take_profit=1.088,
+        risk_reward=2.0, smc_score=85, atr=0.001, htf_bias="BULLISH",
+    )
+    allowed_eur, lots_eur, _ = rm.validate_and_size(
+        setup=eur_setup, specs=eur_specs, account=small_acc,
+        open_positions_count=0, today_pnl=0.0, today_trades=0, session="London",
+    )
+    assert allowed_eur
+    assert lots_eur == 0.01
