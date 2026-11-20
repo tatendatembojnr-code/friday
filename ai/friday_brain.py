@@ -19,6 +19,7 @@ except ImportError:
 from config.settings import AIBrainConfig
 from core.ea31337_bridge import EA31337Signal
 from core.market_context import TimeframeSummary
+from core.tradingview_ta import TVConsensus
 from strategy.smc_engine import TradeSetup
 
 
@@ -118,6 +119,7 @@ class FridayBrain:
         spread_atr_ratio: float,
         memory_examples: List[Dict],
         ea31337_signal: Optional[EA31337Signal] = None,
+        tv_consensus: Optional[TVConsensus] = None,
     ) -> AIVerdict:
         if not self.cfg.enabled:
             return AIVerdict(
@@ -130,7 +132,7 @@ class FridayBrain:
 
         import time
         if self.client is None or time.monotonic() < self._cooldown_until:
-            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
+            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal, tv_consensus)
 
         recent_candles = recent_ltf_df.tail(12).reset_index()
         recent_candles["time"] = recent_candles["time"].astype(str)
@@ -169,6 +171,11 @@ class FridayBrain:
                     "active_strategies": ea31337_signal.active_strategies,
                 }
                 if ea31337_signal
+                else None
+            ),
+            "tradingview_26_indicator_consensus": (
+                {"recommendation": tv_consensus.recommendation, "score": tv_consensus.score}
+                if tv_consensus
                 else None
             ),
         }
@@ -214,7 +221,7 @@ class FridayBrain:
                 self.logger.warning(f"AI provider {self.provider} quota/auth issue ({err_str[:80]}); cooling down 10m.")
             else:
                 self.logger.warning(f"AI evaluation failed ({exc}); using deterministic fallback.")
-            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
+            return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal, tv_consensus)
 
     def _deterministic_fallback(
         self,
@@ -222,6 +229,7 @@ class FridayBrain:
         tf_summaries: Dict[str, TimeframeSummary],
         spread_atr_ratio: float,
         ea31337_signal: Optional[EA31337Signal] = None,
+        tv_consensus: Optional[TVConsensus] = None,
     ) -> AIVerdict:
         """Rule-based fallback when no OpenAI key is configured."""
         score = setup.smc_score
@@ -237,6 +245,13 @@ class FridayBrain:
             if aligned:
                 score += 10
             elif ea31337_signal.bias != "NEUTRAL":
+                score -= 10
+        if tv_consensus:
+            tv_buy = "BUY" in tv_consensus.recommendation
+            tv_sell = "SELL" in tv_consensus.recommendation
+            if (setup.direction == "BUY" and tv_buy) or (setup.direction == "SELL" and tv_sell):
+                score += 10
+            elif (setup.direction == "BUY" and tv_sell) or (setup.direction == "SELL" and tv_buy):
                 score -= 10
         score = max(0, min(100, score))
         decision = "APPROVE" if score >= self.cfg.min_confidence else "REJECT"
