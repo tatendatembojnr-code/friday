@@ -121,6 +121,17 @@ class OrderManager:
                 if self.close_position(pos, reason=f"TimeDecayROI (age={age_minutes:.0f}m, rr={rr_achieved:.2f}R)"):
                     continue
 
+            # 3. Early Loss-Cut (Structure Invalidation): cut losers at -0.50R when M15 trend flips against the trade
+            if rr_achieved <= -0.50:
+                df_m15 = self.connector.get_ohlc(pos["symbol"], "M15", 60)
+                if df_m15 is not None and len(df_m15) >= 50:
+                    ema20 = float(df_m15["close"].ewm(span=20, adjust=False).mean().iloc[-1])
+                    ema50 = float(df_m15["close"].ewm(span=50, adjust=False).mean().iloc[-1])
+                    flipped = (pos["type"] == "BUY" and ema20 < ema50) or (pos["type"] == "SELL" and ema20 > ema50)
+                    if flipped:
+                        if self.close_position(pos, reason=f"StructureInvalidationExit (rr={rr_achieved:.2f}R, M15 flipped)"):
+                            continue
+
             if pos["type"] == "BUY":
                 if rr_achieved >= self.risk_cfg.breakeven_at_rr and pos["ticket"] not in self._scaled_out_tickets:
                     self._partial_close(pos, specs)

@@ -46,6 +46,22 @@ def run_cycle(
     today_pnl, today_trades = connector.get_today_closed_pnl()
     open_positions = connector.get_open_positions(magic=settings.mode.magic_number)
 
+    # Learn from real closed MT5 deals (sync into SQLite memory & StoplossGuard)
+    if not connector.simulate:
+        try:
+            import MetaTrader5 as mt5
+            from datetime import datetime, timedelta, timezone
+            now_utc = datetime.now(timezone.utc)
+            deals = mt5.history_deals_get(now_utc - timedelta(days=1), now_utc) or []
+            for d in deals:
+                if d.magic == settings.mode.magic_number and d.entry in (mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_INOUT):
+                    side = "BUY" if d.type == mt5.DEAL_TYPE_SELL else "SELL"
+                    net_pnl = float(d.profit + d.swap + d.commission)
+                    if memory.sync_closed_deal(int(d.ticket), d.symbol, side, net_pnl):
+                        protections.record_trade_result(d.symbol, net_pnl)
+        except Exception:
+            pass
+
     logger.info(
         f"Scan | Session={session} | Balance={account.balance:.2f} | "
         f"Open={len(open_positions)} | TodayPnL={today_pnl:.2f}"
@@ -74,6 +90,13 @@ def run_cycle(
         if setup is not None and adx_14 < 18.0 and not any("Sweep" in t for t in setup.confluence_tags):
             logger.debug(f"{symbol}: Skipping continuation in choppy regime (ADX={adx_14}).")
             setup = None
+
+        # Adaptive Learning Gate: if symbol's recent win rate < 45% (min 3 trades), require A+ score >= 85
+        if setup is not None:
+            n_hist, wr = memory.get_symbol_win_rate(symbol, last_n=10)
+            if n_hist >= 3 and wr < 0.45 and setup.smc_score < 85:
+                logger.info(f"{symbol}: Adaptive Learning raised bar (win_rate={wr*100:.0f}% < 45%, score={setup.smc_score} < 85).")
+                setup = None
 
         # Smart auto-close: if an open trade is contradicted by a strong opposing SMC setup, close it
         if setup is not None and setup.smc_score >= 70:
