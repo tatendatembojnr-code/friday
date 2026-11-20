@@ -58,8 +58,8 @@ class RiskManager:
             return False, 0.0, f"Session '{session}' outside allowed sessions {self.cfg.allowed_sessions}."
 
         effective_max_open = self.cfg.max_open_trades
-        if account.balance < 250:
-            effective_max_open = min(effective_max_open, 1)
+        if account.balance < 100:
+            effective_max_open = 1
         elif account.balance < 1000:
             effective_max_open = min(effective_max_open, 2)
 
@@ -95,8 +95,15 @@ class RiskManager:
         if sl_dist <= 0 or (tp_dist / sl_dist) < self.cfg.min_risk_reward:
             return False, 0.0, f"Risk-to-reward below minimum {self.cfg.min_risk_reward}."
 
-        risk_mult = 0.5 if vol_ratio > 1.8 else 1.0
-        lot_size = self.calculate_lot_size(account.balance, sl_dist, specs, risk_mult=risk_mult)
+        if account.balance < 100:
+            lot_size = round(specs.volume_min, 2)
+        else:
+            # Asymmetric conviction sizing: 0.75x on standard setups, 1.0x on A+ setups (>= 85), 0.5x on vol spikes
+            conviction_mult = 1.0 if setup.smc_score >= 85 else 0.75
+            vol_mult = 0.5 if vol_ratio > 1.8 else 1.0
+            lot_size = self.calculate_lot_size(
+                account.balance, sl_dist, specs, risk_mult=conviction_mult * vol_mult
+            )
         if lot_size <= 0:
             return False, 0.0, "Calculated lot size is 0."
 

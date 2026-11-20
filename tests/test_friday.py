@@ -176,6 +176,14 @@ def test_small_account_sizing_and_over_risk_protection():
     assert allowed_eur
     assert lots_eur == 0.01
 
+    # 3. Balance < $100 with 1 open position -> MUST block 2nd position
+    blocked_second, _, reason_second = rm.validate_and_size(
+        setup=eur_setup, specs=eur_specs, account=small_acc,
+        open_positions_count=1, today_pnl=0.0, today_trades=1, session="London",
+    )
+    assert not blocked_second
+    assert "Max open trades (1)" in reason_second
+
 
 def test_stoploss_guard_cooldown_blocks_revenge_trading():
     from datetime import datetime, timezone
