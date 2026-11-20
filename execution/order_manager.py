@@ -27,6 +27,8 @@ class OrderManager:
         self.magic = magic_number
         self.dry_run = dry_run or connector.simulate
         self._scaled_out_tickets: set[int] = set()
+        self._peak_rr: Dict[int, float] = {}
+        self._opened_at: Dict[int, float] = {}
 
     def execute_setup(self, setup: TradeSetup, lot_size: float) -> Dict:
         specs = self.connector.get_symbol_specs(setup.symbol)
@@ -98,8 +100,28 @@ class OrderManager:
             if risk_dist <= 0:
                 continue
 
+            import time
+            ticket = pos["ticket"]
+            self._opened_at.setdefault(ticket, time.monotonic())
+            age_minutes = (time.monotonic() - self._opened_at[ticket]) / 60.0
+
+            rr_achieved = (
+                (curr - entry) / risk_dist if pos["type"] == "BUY" else (entry - curr) / risk_dist
+            )
+            peak = max(self._peak_rr.get(ticket, 0.0), rr_achieved)
+            self._peak_rr[ticket] = peak
+
+            # 1. Peak-Profit Giveback Ratchet: if trade reached >= 0.6R and gives back 35% of peak profit, harvest it
+            if peak >= 0.6 and rr_achieved > 0.15 and rr_achieved <= peak * 0.65:
+                if self.close_position(pos, reason=f"ProfitGivebackExit (peak={peak:.2f}R -> {rr_achieved:.2f}R)"):
+                    continue
+
+            # 2. Freqtrade-style Time-Decay ROI: harvest stalled green trades to free capital for fresh setups
+            if (age_minutes >= 45 and rr_achieved >= 0.25) or (age_minutes >= 15 and rr_achieved >= 0.60):
+                if self.close_position(pos, reason=f"TimeDecayROI (age={age_minutes:.0f}m, rr={rr_achieved:.2f}R)"):
+                    continue
+
             if pos["type"] == "BUY":
-                rr_achieved = (curr - entry) / risk_dist
                 if rr_achieved >= self.risk_cfg.breakeven_at_rr and pos["ticket"] not in self._scaled_out_tickets:
                     self._partial_close(pos, specs)
                 new_sl = None
@@ -113,7 +135,6 @@ class OrderManager:
                     self._modify_sl(pos["ticket"], pos["symbol"], new_sl, pos["tp"])
 
             else:  # SELL
-                rr_achieved = (entry - curr) / risk_dist
                 if rr_achieved >= self.risk_cfg.breakeven_at_rr and pos["ticket"] not in self._scaled_out_tickets:
                     self._partial_close(pos, specs)
                 new_sl = None
