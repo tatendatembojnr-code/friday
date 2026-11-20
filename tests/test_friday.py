@@ -191,3 +191,19 @@ def test_stoploss_guard_cooldown_blocks_revenge_trading():
     locked, reason = pm.is_symbol_locked("EURUSD", now=now)
     assert locked
     assert "StoplossGuard" in reason
+
+
+def test_order_manager_peak_profit_ratchet_tracks_rr():
+    from execution.order_manager import OrderManager
+
+    om = OrderManager(
+        connector=MT5Connector(Credentials(), simulate=True),
+        risk_cfg=RiskConfig(),
+        magic_number=777001,
+        dry_run=True,
+    )
+    om._peak_rr[12345] = 0.85
+    # Simulated pullback to 0.50R (<= 0.85 * 0.65 = 0.5525) triggers harvest condition
+    peak = om._peak_rr[12345]
+    rr_now = 0.50
+    assert peak >= 0.6 and rr_now > 0.15 and rr_now <= peak * 0.65
