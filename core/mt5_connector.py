@@ -62,6 +62,8 @@ class MT5Connector:
         self.credentials = credentials
         self.simulate = simulate
         self.connected = False
+        self._ohlc_cache: Dict[str, tuple[float, pd.DataFrame]] = {}
+        self._tf_ttl = {"D1": 300, "H4": 120, "H1": 60, "M30": 30, "M15": 4, "M5": 2, "M1": 1}
 
     def connect(self) -> bool:
         if self.simulate:
@@ -121,14 +123,20 @@ class MT5Connector:
         if self.simulate:
             return self._generate_synthetic_ohlc(symbol, tf_name, bars)
 
+        import time
+        cache_key = f"{symbol}_{tf_name}_{bars}"
+        ttl = self._tf_ttl.get(tf_name, 5)
+        cached = self._ohlc_cache.get(cache_key)
+        if cached and (time.monotonic() - cached[0]) < ttl:
+            return cached[1]
+
         if not mt5.symbol_select(symbol, True):
             self.logger.warning(f"Could not select symbol {symbol} in MT5")
             return None
 
         rates = mt5.copy_rates_from_pos(symbol, self._tf_to_mt5(tf_name), 0, bars)
         if rates is None or len(rates) == 0:
-            import time
-            time.sleep(0.5)
+            time.sleep(0.3)
             rates = mt5.copy_rates_from_pos(symbol, self._tf_to_mt5(tf_name), 0, bars)
         if rates is None or len(rates) == 0:
             self.logger.warning(f"No rates returned for {symbol} {tf_name}")
@@ -137,7 +145,9 @@ class MT5Connector:
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
         df.set_index("time", inplace=True)
-        return df[["open", "high", "low", "close", "tick_volume"]].copy()
+        result = df[["open", "high", "low", "close", "tick_volume"]].copy()
+        self._ohlc_cache[cache_key] = (time.monotonic(), result)
+        return result
 
     def get_symbol_specs(self, symbol: str) -> Optional[SymbolSpecs]:
         if self.simulate:

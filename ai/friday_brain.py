@@ -71,6 +71,7 @@ class FridayBrain:
         self.client = None
         self.provider = "fallback"
         self.active_model = config.model
+        self._cooldown_until = 0.0
 
         if not HAS_OPENAI:
             return
@@ -127,7 +128,8 @@ class FridayBrain:
                 source="bypass",
             )
 
-        if self.client is None:
+        import time
+        if self.client is None or time.monotonic() < self._cooldown_until:
             return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
 
         recent_candles = recent_ltf_df.tail(12).reset_index()
@@ -205,7 +207,13 @@ class FridayBrain:
                 source=self.provider,
             )
         except Exception as exc:
-            self.logger.warning(f"OpenAI evaluation failed ({exc}); using deterministic fallback.")
+            err_str = str(exc)
+            if any(code in err_str for code in ("401", "402", "429")):
+                import time
+                self._cooldown_until = time.monotonic() + 600
+                self.logger.warning(f"AI provider {self.provider} quota/auth issue ({err_str[:80]}); cooling down 10m.")
+            else:
+                self.logger.warning(f"AI evaluation failed ({exc}); using deterministic fallback.")
             return self._deterministic_fallback(setup, tf_summaries, spread_atr_ratio, ea31337_signal)
 
     def _deterministic_fallback(
