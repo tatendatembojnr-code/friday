@@ -111,9 +111,13 @@ def collect_status(
             "mt5_login": settings.credentials.mt5_login,
             "mt5_server": settings.credentials.mt5_server,
             "risk_per_trade_pct": settings.risk.risk_per_trade_pct,
+            "max_daily_loss_pct": settings.risk.max_daily_loss_pct,
+            "max_drawdown_pct": settings.risk.max_drawdown_pct,
             "max_open_trades": settings.risk.max_open_trades,
             "min_smc_score": settings.smc.min_smc_score,
             "default_rr_target": settings.smc.default_rr_target,
+            "breakeven_at_rr": settings.risk.breakeven_at_rr,
+            "poll_interval_seconds": settings.mode.poll_interval_seconds,
             "dry_run": settings.mode.dry_run,
         }
 
@@ -149,6 +153,22 @@ def _update_env_and_config(payload: Dict[str, Any], settings: FridaySettings) ->
             val = float(payload["risk_per_trade_pct"])
             raw["risk"]["risk_per_trade_pct"] = val
             settings.risk.risk_per_trade_pct = val
+        if "max_daily_loss_pct" in payload and payload["max_daily_loss_pct"] is not None:
+            val = float(payload["max_daily_loss_pct"])
+            raw["risk"]["max_daily_loss_pct"] = val
+            settings.risk.max_daily_loss_pct = val
+        if "max_drawdown_pct" in payload and payload["max_drawdown_pct"] is not None:
+            val = float(payload["max_drawdown_pct"])
+            raw["risk"]["max_drawdown_pct"] = val
+            settings.risk.max_drawdown_pct = val
+        if "breakeven_at_rr" in payload and payload["breakeven_at_rr"] is not None:
+            val = float(payload["breakeven_at_rr"])
+            raw["risk"]["breakeven_at_rr"] = val
+            settings.risk.breakeven_at_rr = val
+        if "poll_interval_seconds" in payload and payload["poll_interval_seconds"] is not None:
+            val = int(payload["poll_interval_seconds"])
+            raw["mode"]["poll_interval_seconds"] = val
+            settings.mode.poll_interval_seconds = val
         if "max_open_trades" in payload and payload["max_open_trades"] is not None:
             val = int(payload["max_open_trades"])
             raw["risk"]["max_open_trades"] = val
@@ -179,6 +199,10 @@ def _update_env_and_config(payload: Dict[str, Any], settings: FridaySettings) ->
         updates["GEMINI_API_KEY"] = str(payload["gemini_api_key"])
     if payload.get("groq_api_key"):
         updates["GROQ_API_KEY"] = str(payload["groq_api_key"])
+    if payload.get("telegram_bot_token"):
+        updates["TELEGRAM_BOT_TOKEN"] = str(payload["telegram_bot_token"])
+    if payload.get("telegram_chat_id"):
+        updates["TELEGRAM_CHAT_ID"] = str(payload["telegram_chat_id"])
 
     if updates:
         new_lines = []
