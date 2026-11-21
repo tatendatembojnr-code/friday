@@ -18,6 +18,7 @@ from config.settings import FridaySettings
 from core.ea31337_bridge import EA31337Bridge
 from core.market_context import build_htf_bias, detect_trading_session, summarize_timeframe
 from core.mt5_connector import MT5Connector
+from core.news_guard import NewsGuard
 from core.tradingview_ta import TradingViewClient
 from execution.order_manager import OrderManager
 from risk.protections import ProtectionManager
@@ -38,6 +39,7 @@ def run_cycle(
     learner: SelfLearner,
     bridge: EA31337Bridge,
     tv_client: TradingViewClient,
+    news_guard: NewsGuard,
     protections: ProtectionManager,
     notifier: TelegramNotifier,
     risk_mgr: RiskManager,
@@ -70,6 +72,12 @@ def run_cycle(
         f"Scan | Session={session} | Balance={account.balance:.2f} | "
         f"Open={len(open_positions)} | TodayPnL={today_pnl:.2f}"
     )
+
+    if not connector.simulate:
+        macro_risk, headline = news_guard.check_macro_risk()
+        if macro_risk:
+            logger.warning(f"NewsGuard active (high-impact headline: {headline[:70]}); skipping new entries.")
+            return
 
     for symbol in settings.trading.symbols:
         tf_summaries = {}
@@ -264,6 +272,7 @@ def main() -> None:
     learner = SelfLearner(BASE_DIR / "data" / "friday_memory.db")
     bridge = EA31337Bridge(settings.ea31337_bridge)
     tv_client = TradingViewClient()
+    news_guard = NewsGuard()
     protections = ProtectionManager()
     notifier = TelegramNotifier()
     risk_mgr = RiskManager(settings.risk)
@@ -294,7 +303,7 @@ def main() -> None:
             if not bot_state.get("paused", False):
                 run_cycle(
                     settings, connector, smc, brain, memory, learner, bridge,
-                    tv_client, protections, notifier, risk_mgr, order_mgr, logger,
+                    tv_client, news_guard, protections, notifier, risk_mgr, order_mgr, logger,
                 )
             if args.once:
                 break

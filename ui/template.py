@@ -87,6 +87,12 @@ SOFT_UI_HTML = """<!DOCTYPE html>
             <span class="nav-link-text">AI &amp; Journal</span>
           </a>
         </li>
+        <li class="nav-item mb-1">
+          <a class="nav-link" href="#" onclick="switchTab('backtest', this, 'Strategy Backtester')">
+            <span class="icon-box me-2"><i class="ti ti-player-play"></i></span>
+            <span class="nav-link-text">Backtester</span>
+          </a>
+        </li>
         <li class="nav-item mt-3 mb-1">
           <h6 class="ps-3 text-uppercase text-xs font-weight-bolder opacity-6">System</h6>
         </li>
@@ -407,6 +413,41 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         <div class="card"><div class="card-header bg-white pb-0"><h6><i class="ti ti-terminal-2 text-lime me-1"></i>Full Execution Logs</h6></div>
         <div class="card-body"><div id="logViewer" class="log-box log-box-tall">Loading...</div></div></div>
       </div>
+
+      <!-- TAB 6: STRATEGY BACKTESTER -->
+      <div id="tab-backtest" class="tab-pane-custom">
+        <div class="card mb-4">
+          <div class="card-header bg-white pb-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <h6 class="mb-0"><i class="ti ti-player-play text-lime me-1"></i>One-Click Strategy Backtester</h6>
+              <span class="text-xs text-secondary">Replay FRIDAY's SMC + 0.5R Breakeven + 1.8R TP on historical M15 bars</span>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <select id="btSymbol" class="form-select form-select-sm w-auto">
+                <option value="EURUSD">EURUSD</option>
+                <option value="GBPUSD">GBPUSD</option>
+                <option value="USDJPY">USDJPY</option>
+                <option value="XAUUSD" selected>XAUUSD</option>
+              </select>
+              <select id="btBars" class="form-select form-select-sm w-auto">
+                <option value="200">200 Bars</option>
+                <option value="300" selected>300 Bars</option>
+                <option value="500">500 Bars</option>
+              </select>
+              <button class="btn btn-sm btn-lime mb-0" onclick="runBacktestUI()">Run Backtest</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-3 mb-3 text-center">
+              <div class="col-md-3 col-6"><div class="p-2 border rounded"><div class="text-xs text-secondary">Trades</div><div class="fw-bold" id="btTrades">--</div></div></div>
+              <div class="col-md-3 col-6"><div class="p-2 border rounded"><div class="text-xs text-secondary">Win Rate</div><div class="fw-bold text-lime" id="btWinRate">--</div></div></div>
+              <div class="col-md-3 col-6"><div class="p-2 border rounded"><div class="text-xs text-secondary">Profit Factor</div><div class="fw-bold" id="btPF">--</div></div></div>
+              <div class="col-md-3 col-6"><div class="p-2 border rounded"><div class="text-xs text-secondary">Net Return / Max DD</div><div class="fw-bold" id="btRet">--</div></div></div>
+            </div>
+            <canvas id="btChart" height="120"></canvas>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -415,7 +456,7 @@ SOFT_UI_HTML = """<!DOCTYPE html>
   <script src="/assets/js/plugins/chartjs.min.js"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script>
-    let equityChart = null, marketChart = null, candleChart = null, candleSeries = null, configLoaded = false, countdownSec = 0;
+    let equityChart = null, marketChart = null, candleChart = null, candleSeries = null, btChart = null, configLoaded = false, countdownSec = 0;
 
     function formatCountdown(sec) {
       if (sec <= 0) return '00h 00m 00s';
@@ -627,6 +668,26 @@ SOFT_UI_HTML = """<!DOCTYPE html>
     }
 
     async function toggleBot() { await fetch('/api/bot/toggle', {method:'POST'}); refreshStatus(); }
+    async function runBacktestUI() {
+      const sym = document.getElementById('btSymbol').value;
+      const bars = document.getElementById('btBars').value;
+      const r = await fetch(`/api/backtest?symbol=${sym}&bars=${bars}`);
+      const d = await r.json();
+      if (d.error) { alert(d.error); return; }
+      document.getElementById('btTrades').textContent = `${d.total_trades} (${d.wins}W / ${d.losses}L)`;
+      document.getElementById('btWinRate').textContent = `${d.win_rate_pct}%`;
+      document.getElementById('btPF').textContent = d.profit_factor;
+      document.getElementById('btRet').textContent = `${d.net_return_pct >= 0 ? '+' : ''}${d.net_return_pct}% / -${d.max_drawdown_pct}%`;
+      const ctx = document.getElementById('btChart').getContext('2d');
+      const labels = (d.equity_curve || []).map(p => `Bar ${p.bar}`);
+      const vals = (d.equity_curve || []).map(p => p.equity);
+      if (btChart) btChart.destroy();
+      btChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: `${sym} Backtest ($)`, data: vals, borderColor: '#65a30d', backgroundColor: 'rgba(132,204,22,0.18)', fill: true, tension: 0.3 }] },
+        options: { responsive: true }
+      });
+    }
     async function logout() { await fetch('/api/logout', {method:'POST'}); window.location.href = '/login'; }
     async function closeOne(ticket) { await fetch('/api/close_position', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ticket})}); refreshStatus(); }
     async function closeAllPositions() { if(confirm('Close all open MT5 positions?')) { await fetch('/api/close_all', {method:'POST'}); refreshStatus(); } }

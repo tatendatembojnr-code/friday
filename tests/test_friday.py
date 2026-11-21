@@ -282,3 +282,23 @@ def test_killzone_vwap_and_self_learner(tmp_path):
     learner = SelfLearner(tmp_path / "learn.db")
     adj, _ = learner.get_learned_adjustment("EURUSD", "BUY")
     assert adj == 10
+
+
+def test_news_guard_and_backtester():
+    from config.settings import FridaySettings
+    from core.backtester import run_backtest
+    from core.news_guard import NewsGuard
+
+    ng = NewsGuard()
+    flagged, matched = ng.check_macro_risk(["US CPI inflation surges above forecast"])
+    assert flagged is True
+    assert "CPI" in matched
+
+    clean, _ = ng.check_macro_risk(["Quiet Asian session ahead"])
+    assert clean is False
+
+    conn = MT5Connector(Credentials(), simulate=True)
+    assert conn.connect()
+    res = run_backtest(conn, FridaySettings(), symbol="EURUSD", bars=200)
+    assert "total_trades" in res
+    assert res["bars"] == 200
