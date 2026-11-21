@@ -13,6 +13,7 @@ if str(BASE_DIR) not in sys.path:
 
 from ai.friday_brain import FridayBrain
 from ai.memory import FridayMemory
+from ai.self_learner import SelfLearner
 from config.settings import FridaySettings
 from core.ea31337_bridge import EA31337Bridge
 from core.market_context import build_htf_bias, detect_trading_session, summarize_timeframe
@@ -21,6 +22,7 @@ from core.tradingview_ta import TradingViewClient
 from execution.order_manager import OrderManager
 from risk.protections import ProtectionManager
 from risk.risk_manager import RiskManager
+from strategy.killzone_vwap import compute_vwap_and_pdh_pdl, get_killzone, score_institutional_location
 from strategy.smc_engine import SMCEngine
 from ui.dashboard import start_dashboard
 from utils.logger import setup_logger
@@ -33,6 +35,7 @@ def run_cycle(
     smc: SMCEngine,
     brain: FridayBrain,
     memory: FridayMemory,
+    learner: SelfLearner,
     bridge: EA31337Bridge,
     tv_client: TradingViewClient,
     protections: ProtectionManager,
@@ -92,8 +95,20 @@ def run_cycle(
             logger.debug(f"{symbol}: Skipping continuation in choppy regime (ADX={adx_14}).")
             setup = None
 
-        # Adaptive Learning Gate: if symbol's recent win rate < 45% (min 3 trades), require A+ score >= 85
+        # Adaptive Learning Gate + Institutional Killzone/VWAP + SelfLearner score adjustment
         if setup is not None:
+            df_d1 = connector.get_ohlc(symbol, "D1", 10)
+            levels = compute_vwap_and_pdh_pdl(df_ltf, df_d1)
+            kz = get_killzone()
+            loc_bonus, loc_tags = score_institutional_location(
+                setup.direction, setup.entry, levels["vwap"], levels["pdh"], levels["pdl"], kz
+            )
+            learned_adj, learned_note = learner.get_learned_adjustment(symbol, setup.direction)
+            setup.smc_score = max(0, min(100, setup.smc_score + loc_bonus + learned_adj))
+            setup.confluence_tags.extend(loc_tags)
+            if loc_tags or learned_adj != 0:
+                logger.info(f"{symbol}: Quant Boost ({loc_tags}, {learned_note}) -> Score={setup.smc_score}")
+
             n_hist, wr = memory.get_symbol_win_rate(symbol, last_n=10)
             if n_hist >= 3 and wr < 0.45 and setup.smc_score < 85:
                 logger.info(f"{symbol}: Adaptive Learning raised bar (win_rate={wr*100:.0f}% < 45%, score={setup.smc_score} < 85).")
@@ -246,6 +261,7 @@ def main() -> None:
         ollama_model=settings.credentials.ollama_model,
     )
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
+    learner = SelfLearner(BASE_DIR / "data" / "friday_memory.db")
     bridge = EA31337Bridge(settings.ea31337_bridge)
     tv_client = TradingViewClient()
     protections = ProtectionManager()
@@ -277,7 +293,7 @@ def main() -> None:
         while True:
             if not bot_state.get("paused", False):
                 run_cycle(
-                    settings, connector, smc, brain, memory, bridge,
+                    settings, connector, smc, brain, memory, learner, bridge,
                     tv_client, protections, notifier, risk_mgr, order_mgr, logger,
                 )
             if args.once:

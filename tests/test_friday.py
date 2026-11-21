@@ -264,3 +264,21 @@ def test_database_user_auth_and_session(tmp_path):
     db.log_audit("trader1", "TEST_ACTION", "unit test")
     db.delete_session(tok)
     assert db.verify_session(tok) is None
+
+
+def test_killzone_vwap_and_self_learner(tmp_path):
+    from ai.self_learner import SelfLearner
+    from strategy.killzone_vwap import score_institutional_location
+
+    bonus, tags = score_institutional_location(
+        direction="BUY", price=1.0810, vwap=1.0850, pdh=1.0900, pdl=1.0800, killzone="LondonKillzone"
+    )
+    assert bonus == 20
+    assert "DiscountVWAP" in tags and "NearPDL" in tags and "LondonKillzone" in tags
+
+    mem = FridayMemory(tmp_path / "learn.db")
+    for t in range(1, 5):
+        mem.sync_closed_deal(t, "EURUSD", "BUY", 100.0)
+    learner = SelfLearner(tmp_path / "learn.db")
+    adj, _ = learner.get_learned_adjustment("EURUSD", "BUY")
+    assert adj == 10
