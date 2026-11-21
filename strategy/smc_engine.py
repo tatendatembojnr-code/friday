@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import SMCConfig
-from core.market_context import compute_atr
+from core.market_context import compute_atr, compute_rsi
 
 
 @dataclass
@@ -85,6 +85,9 @@ class SMCEngine:
         if np.isnan(atr) or atr <= 0:
             return None
 
+        rsi_val = float(compute_rsi(df["close"], 14).iloc[-1])
+        rsi_val = 50.0 if np.isnan(rsi_val) else rsi_val
+
         swing_highs, swing_lows = self._find_swings(df)
         if not swing_highs or not swing_lows:
             return None
@@ -133,7 +136,7 @@ class SMCEngine:
             ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
             ltf_bullish = recent_close > ema20 and ema20 >= ema50
 
-            if score >= self.cfg.min_smc_score and (swept_low or (bos_up and ltf_bullish) or (htf_bias == "BULLISH" and ltf_bullish and (ob or fvg))):
+            if rsi_val <= 72.0 and score >= self.cfg.min_smc_score and (swept_low or (bos_up and ltf_bullish) or (htf_bias == "BULLISH" and ltf_bullish and (ob or fvg))):
                 anchor_low = min(float(recent_lows.min()), ob[0] if ob else float(recent_lows.min()))
                 sl = min(anchor_low, recent_close - atr) - (atr * self.cfg.sl_atr_buffer)
                 risk = recent_close - sl
@@ -191,7 +194,7 @@ class SMCEngine:
             ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
             ltf_bearish = recent_close < ema20 and ema20 <= ema50
 
-            if score >= self.cfg.min_smc_score and (swept_high or (bos_down and ltf_bearish) or (htf_bias == "BEARISH" and ltf_bearish and (ob or fvg))):
+            if rsi_val >= 28.0 and score >= self.cfg.min_smc_score and (swept_high or (bos_down and ltf_bearish) or (htf_bias == "BEARISH" and ltf_bearish and (ob or fvg))):
                 anchor_high = max(float(recent_highs.max()), ob[1] if ob else float(recent_highs.max()))
                 sl = max(anchor_high, recent_close + atr) + (atr * self.cfg.sl_atr_buffer)
                 risk = sl - recent_close

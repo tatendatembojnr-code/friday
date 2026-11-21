@@ -14,6 +14,8 @@ TV_SYMBOL_MAP = {
     "EURUSD": ("forex", "FX:EURUSD"),
     "GBPUSD": ("forex", "FX:GBPUSD"),
     "USDJPY": ("forex", "FX:USDJPY"),
+    "EURJPY": ("forex", "FX:EURJPY"),
+    "AUDUSD": ("forex", "FX:AUDUSD"),
     "XAUUSD": ("cfd", "OANDA:XAUUSD"),
 }
 
