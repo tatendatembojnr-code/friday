@@ -215,3 +215,20 @@ def test_order_manager_peak_profit_ratchet_tracks_rr():
     peak = om._peak_rr[12345]
     rr_now = 0.50
     assert peak >= 0.6 and rr_now > 0.15 and rr_now <= peak * 0.65
+
+
+def test_dashboard_collect_status_returns_valid_payload(tmp_path):
+    from ui.dashboard import collect_status
+
+    conn = MT5Connector(Credentials(), simulate=True)
+    assert conn.connect()
+    payload = collect_status(
+        connector=conn,
+        db_path=tmp_path / "missing.db",
+        log_path=tmp_path / "missing.log",
+        mode_label="SIMULATE",
+        session="London",
+    )
+    assert payload["mode"] == "SIMULATE"
+    assert payload["balance"] == 10000.0
+    assert isinstance(payload["positions"], list)

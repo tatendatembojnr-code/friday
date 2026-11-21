@@ -22,6 +22,7 @@ from execution.order_manager import OrderManager
 from risk.protections import ProtectionManager
 from risk.risk_manager import RiskManager
 from strategy.smc_engine import SMCEngine
+from ui.dashboard import start_dashboard
 from utils.logger import setup_logger
 from utils.notifier import TelegramNotifier
 
@@ -213,6 +214,7 @@ def main() -> None:
     parser.add_argument("--live", action="store_true", help="Enable live order execution")
     parser.add_argument("--simulate", action="store_true", help="Run with synthetic data (no MT5 needed)")
     parser.add_argument("--once", action="store_true", help="Run a single scan cycle and exit")
+    parser.add_argument("--no-ui", action="store_true", help="Disable the local web dashboard UI")
     args = parser.parse_args()
 
     logger = setup_logger(log_dir=BASE_DIR / "logs")
@@ -256,6 +258,17 @@ def main() -> None:
         dry_run=settings.mode.dry_run,
     )
 
+    ui_server = None
+    if not args.no_ui and not args.once:
+        mode_lbl = "SIMULATE" if args.simulate else ("DRY-RUN" if settings.mode.dry_run else "LIVE")
+        ui_server = start_dashboard(
+            connector=connector,
+            db_path=BASE_DIR / "data" / "friday_memory.db",
+            log_path=BASE_DIR / "logs" / "friday.log",
+            mode_label=mode_lbl,
+            session_fn=detect_trading_session,
+        )
+
     try:
         while True:
             run_cycle(
@@ -268,6 +281,8 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("FRIDAY stopped by user.")
     finally:
+        if ui_server:
+            ui_server.shutdown()
         connector.shutdown()
         logger.info("FRIDAY shutdown complete.")
 
