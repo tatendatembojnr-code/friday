@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
 
 from config.settings import BASE_DIR, FridaySettings
+from core.backtester import run_backtest
 from core.database import DatabaseManager
 from core.market_schedule import get_market_schedule_info
 from core.mt5_connector import MT5Connector
@@ -400,6 +401,14 @@ def start_dashboard(
                         {"title": "Live RSS feed unavailable offline — check internet connection.", "link": "#", "pubDate": ""}
                     ]
                 self._send_json({"items": news_items})
+                return
+
+            if parsed.path == "/api/backtest":
+                qs = parse_qs(parsed.query)
+                sym = qs.get("symbol", ["XAUUSD"])[0]
+                bars = int(qs.get("bars", ["300"])[0])
+                res = run_backtest(connector, settings or FridaySettings.load(), symbol=sym, bars=bars)
+                self._send_json(res)
                 return
 
             body = SOFT_UI_HTML.encode("utf-8")
