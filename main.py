@@ -258,6 +258,7 @@ def main() -> None:
         dry_run=settings.mode.dry_run,
     )
 
+    bot_state = {"paused": False}
     ui_server = None
     if not args.no_ui and not args.once:
         mode_lbl = "SIMULATE" if args.simulate else ("DRY-RUN" if settings.mode.dry_run else "LIVE")
@@ -267,14 +268,18 @@ def main() -> None:
             log_path=BASE_DIR / "logs" / "friday.log",
             mode_label=mode_lbl,
             session_fn=detect_trading_session,
+            settings=settings,
+            order_mgr=order_mgr,
+            bot_state=bot_state,
         )
 
     try:
         while True:
-            run_cycle(
-                settings, connector, smc, brain, memory, bridge,
-                tv_client, protections, notifier, risk_mgr, order_mgr, logger,
-            )
+            if not bot_state.get("paused", False):
+                run_cycle(
+                    settings, connector, smc, brain, memory, bridge,
+                    tv_client, protections, notifier, risk_mgr, order_mgr, logger,
+                )
             if args.once:
                 break
             time.sleep(settings.mode.poll_interval_seconds)

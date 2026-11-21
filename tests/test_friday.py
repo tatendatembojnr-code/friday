@@ -231,4 +231,9 @@ def test_dashboard_collect_status_returns_valid_payload(tmp_path):
     )
     assert payload["mode"] == "SIMULATE"
     assert payload["balance"] == 10000.0
+    assert "margin_free" in payload
+    assert "total_profits" in payload
+    assert "total_losses" in payload
+    assert isinstance(payload["equity_curve"], list)
+    assert isinstance(payload["market_watch"], list)
     assert isinstance(payload["positions"], list)
