@@ -7,7 +7,6 @@ venv/
 .pytest_cache/
 
 # Secrets & Environment
-.env
 config/mt5_credentials.json
 
 # Runtime Data & Logs
@@ -16,3 +15,5 @@ logs/
 data/
 *.db
 *.sqlite
+config.bat
+node_modules

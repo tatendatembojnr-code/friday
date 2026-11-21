@@ -302,3 +302,11 @@ def test_news_guard_and_backtester():
     res = run_backtest(conn, FridaySettings(), symbol="EURUSD", bars=200)
     assert "total_trades" in res
     assert res["bars"] == 200
+
+
+def test_expanded_symbols_loaded_in_config():
+    from config.settings import FridaySettings
+
+    s = FridaySettings.load()
+    assert "EURJPY" in s.trading.symbols
+    assert "AUDUSD" in s.trading.symbols
