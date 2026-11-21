@@ -5,7 +5,8 @@ SOFT_UI_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-  <link rel="icon" type="image/png" href="/assets/img/favicon.png" />
+  <link rel="icon" type="image/png" href="/assets/img/friday-icon.png" />
+  <link rel="apple-touch-icon" sizes="76x76" href="/assets/img/friday-icon.png" />
   <title>FRIDAY — Institutional Trading Command Center</title>
   <link href="https://fonts.googleapis.com/css?family=Inter:400,500,600,700,800" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet" />
@@ -61,7 +62,7 @@ SOFT_UI_HTML = """<!DOCTYPE html>
   <aside class="sidenav navbar navbar-vertical navbar-expand-xs border-0 border-radius-xl my-3 fixed-start ms-3 bg-white" id="sidenav-main">
     <div class="sidenav-header">
       <a class="navbar-brand m-0 d-flex align-items-center" href="#" onclick="switchTab('dashboard', this, 'Dashboard')">
-        <span class="icon-box bg-lime-grad me-2"><i class="ti ti-robot"></i></span>
+        <img src="/assets/img/friday-icon.png" alt="FRIDAY" style="width:34px;height:34px;border-radius:8px;object-fit:contain;" class="me-2" />
         <span class="font-weight-bold text-dark" style="font-size:1.05rem;">FRIDAY AI</span>
       </a>
     </div>
@@ -129,9 +130,11 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         </div>
         <div class="d-flex align-items-center gap-2">
           <span class="text-xs text-secondary me-2" id="livePulse"><i class="ti ti-activity text-lime"></i> Live 2s</span>
+          <span id="dbBadge" class="badge bg-light text-dark border">DB: SQLITE</span>
           <span id="statusBadge" class="badge bg-lime-grad">--</span>
           <button id="toggleBotBtn" class="btn btn-outline-lime btn-sm mb-0" onclick="toggleBot()">Pause Bot</button>
           <button class="btn btn-danger btn-sm mb-0" onclick="closeAllPositions()"><i class="ti ti-x me-1"></i>Close All</button>
+          <button class="btn btn-light btn-sm mb-0 border" onclick="logout()" title="Sign Out"><i class="ti ti-logout"></i></button>
         </div>
       </div>
     </nav>
@@ -448,6 +451,7 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         document.getElementById('sessionInfo').textContent = `${d.session} | Updated ${new Date().toLocaleTimeString()}`;
         document.getElementById('sidebarSession').textContent = `${d.session} (${d.mode})`;
         document.getElementById('cardSessionShort').textContent = d.session;
+        if (d.db_backend) document.getElementById('dbBadge').textContent = `DB: ${d.db_backend.toUpperCase()}`;
         if (d.schedule) {
           document.getElementById('lockGreeting').textContent = d.schedule.greeting;
           document.getElementById('marketStatusMsg').textContent = d.schedule.status_message;
@@ -623,6 +627,7 @@ SOFT_UI_HTML = """<!DOCTYPE html>
     }
 
     async function toggleBot() { await fetch('/api/bot/toggle', {method:'POST'}); refreshStatus(); }
+    async function logout() { await fetch('/api/logout', {method:'POST'}); window.location.href = '/login'; }
     async function closeOne(ticket) { await fetch('/api/close_position', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ticket})}); refreshStatus(); }
     async function closeAllPositions() { if(confirm('Close all open MT5 positions?')) { await fetch('/api/close_all', {method:'POST'}); refreshStatus(); } }
     async function saveConfig() {
@@ -667,3 +672,68 @@ SOFT_UI_HTML = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <link rel="icon" type="image/png" href="/assets/img/friday-icon.png" />
+  <title>Sign In — FRIDAY AI Trading</title>
+  <link href="https://fonts.googleapis.com/css?family=Inter:400,500,600,700,800" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet" />
+  <link href="/assets/css/soft-ui-dashboard.css?v=1.1.0" rel="stylesheet" />
+  <style>
+    body { background: linear-gradient(135deg, #f8fafc 0%, #ecfccb 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; }
+    .login-card { max-width: 430px; width: 100%; border-radius: 1.25rem; border: 1px solid #e2e8f0; box-shadow: 0 20px 50px rgba(15,23,42,0.08); background: #fff; }
+    .btn-lime { background: linear-gradient(310deg, #4d7c0f 0%, #84cc16 100%) !important; color: #fff !important; border: none !important; }
+  </style>
+</head>
+<body>
+  <div class="login-card p-4 p-md-5 m-3">
+    <div class="text-center mb-4">
+      <img src="/assets/img/friday-logo-main.png" alt="FRIDAY" style="max-width:210px;height:auto;border-radius:12px;" class="mb-2" />
+      <h5 class="font-weight-bolder text-dark mb-1">Command Center Sign In</h5>
+      <p class="text-xs text-secondary mb-0">Think Smart. Trade Sharp. AI-Powered Trading Intelligence</p>
+    </div>
+    <div id="errBox" class="alert alert-danger text-white text-xs py-2 d-none"></div>
+    <form onsubmit="doLogin(event)">
+      <div class="mb-3">
+        <label class="form-label text-xs font-weight-bold">Username</label>
+        <input id="username" class="form-control" placeholder="tatenda" required autofocus />
+      </div>
+      <div class="mb-4">
+        <label class="form-label text-xs font-weight-bold">Password</label>
+        <input id="password" type="password" class="form-control" placeholder="••••••••" required />
+      </div>
+      <button type="submit" class="btn btn-lime w-100 py-2 font-weight-bold">
+        <i class="ti ti-lock-open me-1"></i> Sign In to FRIDAY
+      </button>
+    </form>
+  </div>
+  <script>
+    async function doLogin(e) {
+      e.preventDefault();
+      const err = document.getElementById('errBox');
+      err.classList.add('d-none');
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        window.location.href = '/';
+      } else {
+        err.textContent = d.error || 'Invalid credentials';
+        err.classList.remove('d-none');
+      }
+    }
+  </script>
+</body>
+</html>
+"""
+

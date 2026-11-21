@@ -249,3 +249,18 @@ def test_market_schedule_weekend_countdown():
     assert info["is_weekend_closed"] is True
     assert info["seconds_to_open"] > 0
     assert "Good Morning, Tatenda" in info["greeting"]
+
+
+def test_database_user_auth_and_session(tmp_path):
+    from core.database import DatabaseManager
+
+    db = DatabaseManager(db_path=tmp_path / "auth_test.db")
+    assert db.create_user("trader1", "secret123")
+    assert db.verify_user("trader1", "secret123")
+    assert not db.verify_user("trader1", "wrong")
+
+    tok = db.create_session("trader1")
+    assert db.verify_session(tok) == "trader1"
+    db.log_audit("trader1", "TEST_ACTION", "unit test")
+    db.delete_session(tok)
+    assert db.verify_session(tok) is None

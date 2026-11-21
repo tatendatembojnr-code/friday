@@ -7,15 +7,17 @@ import logging
 import mimetypes
 import sqlite3
 import threading
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
 
 from config.settings import BASE_DIR, FridaySettings
+from core.database import DatabaseManager
 from core.market_schedule import get_market_schedule_info
 from core.mt5_connector import MT5Connector
-from ui.template import SOFT_UI_HTML
+from ui.template import LOGIN_HTML, SOFT_UI_HTML
 
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -132,6 +134,7 @@ def collect_status(
 
     return {
         "mode": mode_label,
+        "db_backend": "postgresql" if (settings and __import__("os").getenv("DATABASE_URL", "").startswith("postgres")) else "sqlite",
         "paused": bool(bot_state.get("paused")) if bot_state else False,
         "session": session,
         "schedule": get_market_schedule_info(),
@@ -284,15 +287,29 @@ def start_dashboard(
 ) -> ThreadingHTTPServer:
     logger = logging.getLogger("FRIDAY")
     state = bot_state if bot_state is not None else {"paused": False}
+    db = DatabaseManager(db_path=db_path)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:
             return
 
-        def _send_json(self, data: Any, status: int = 200) -> None:
+        def _get_session_user(self) -> str | None:
+            cookie_hdr = self.headers.get("Cookie", "")
+            if not cookie_hdr:
+                return None
+            c = SimpleCookie()
+            c.load(cookie_hdr)
+            morsel = c.get("friday_session")
+            if not morsel:
+                return None
+            return db.verify_session(morsel.value)
+
+        def _send_json(self, data: Any, status: int = 200, set_cookie: str | None = None) -> None:
             body = json.dumps(data).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
+            if set_cookie:
+                self.send_header("Set-Cookie", set_cookie)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -312,6 +329,25 @@ def start_dashboard(
                     self.wfile.write(data)
                     return
                 self.send_error(404)
+                return
+
+            if parsed.path == "/login":
+                body = LOGIN_HTML.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            user = self._get_session_user()
+            if not user:
+                if parsed.path.startswith("/api/"):
+                    self._send_json({"error": "Unauthorized"}, status=401)
+                else:
+                    self.send_response(302)
+                    self.send_header("Location", "/login")
+                    self.end_headers()
                 return
 
             if parsed.path == "/api/status":
@@ -378,8 +414,38 @@ def start_dashboard(
             raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
             payload = json.loads(raw_body) if raw_body.strip() else {}
 
+            if self.path == "/api/login":
+                uname = str(payload.get("username", "")).strip()
+                pwd = str(payload.get("password", ""))
+                if db.verify_user(uname, pwd):
+                    tok = db.create_session(uname)
+                    db.log_audit(uname, "LOGIN", "Signed into Web Command Center")
+                    self._send_json(
+                        {"ok": True, "username": uname},
+                        set_cookie=f"friday_session={tok}; Path=/; HttpOnly; SameSite=Lax",
+                    )
+                else:
+                    self._send_json({"ok": False, "error": "Invalid username or password"}, status=401)
+                return
+
+            if self.path == "/api/logout":
+                cookie_hdr = self.headers.get("Cookie", "")
+                c = SimpleCookie()
+                if cookie_hdr:
+                    c.load(cookie_hdr)
+                    if "friday_session" in c:
+                        db.delete_session(c["friday_session"].value)
+                self._send_json({"ok": True}, set_cookie="friday_session=; Path=/; Max-Age=0")
+                return
+
+            user = self._get_session_user()
+            if not user:
+                self._send_json({"error": "Unauthorized"}, status=401)
+                return
+
             if self.path == "/api/bot/toggle":
                 state["paused"] = not state.get("paused", False)
+                db.log_audit(user, "BOT_TOGGLE", f"paused={state['paused']}")
                 self._send_json({"paused": state["paused"]})
                 return
 
