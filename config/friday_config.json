@@ -6,7 +6,7 @@
     "magic_number": 777001
   },
   "trading": {
-    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"],
+    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "EURJPY", "AUDUSD"],
     "htf_timeframes": ["D1", "H4"],
     "ltf_timeframe": "M15",
     "context_timeframe": "H1",
