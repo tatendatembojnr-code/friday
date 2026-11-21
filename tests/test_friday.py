@@ -237,3 +237,15 @@ def test_dashboard_collect_status_returns_valid_payload(tmp_path):
     assert isinstance(payload["equity_curve"], list)
     assert isinstance(payload["market_watch"], list)
     assert isinstance(payload["positions"], list)
+    assert "schedule" in payload
+
+
+def test_market_schedule_weekend_countdown():
+    from datetime import datetime, timezone
+    from core.market_schedule import get_market_schedule_info
+
+    sat = datetime(2026, 11, 21, 6, 30, tzinfo=timezone.utc)
+    info = get_market_schedule_info(now_utc=sat, local_now=datetime(2026, 11, 21, 8, 30))
+    assert info["is_weekend_closed"] is True
+    assert info["seconds_to_open"] > 0
+    assert "Good Morning, Tatenda" in info["greeting"]

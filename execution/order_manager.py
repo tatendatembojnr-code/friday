@@ -121,6 +121,11 @@ class OrderManager:
                 if self.close_position(pos, reason=f"TimeDecayROI (age={age_minutes:.0f}m, rr={rr_achieved:.2f}R)"):
                     continue
 
+            # 2.5 Max Trade Duration guard (if configured > 0)
+            if self.risk_cfg.max_trade_duration_minutes > 0 and age_minutes >= self.risk_cfg.max_trade_duration_minutes:
+                if self.close_position(pos, reason=f"MaxDurationExit ({age_minutes:.0f}m >= {self.risk_cfg.max_trade_duration_minutes}m)"):
+                    continue
+
             # 3. Early Loss-Cut (Structure Invalidation): cut losers at -0.50R when M15 trend flips against the trade
             if rr_achieved <= -0.50:
                 df_m15 = self.connector.get_ohlc(pos["symbol"], "M15", 60)

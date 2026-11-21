@@ -47,6 +47,7 @@
     "breakeven_at_rr": 0.5,
     "trailing_start_rr": 0.8,
     "trailing_atr_mult": 0.5,
+    "max_trade_duration_minutes": 0,
     "allowed_sessions": ["London", "New York", "London-NY Overlap"]
   }
 }
