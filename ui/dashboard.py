@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
 
 from config.settings import BASE_DIR, FridaySettings
+from core.market_schedule import get_market_schedule_info
 from core.mt5_connector import MT5Connector
 from ui.template import SOFT_UI_HTML
 
@@ -110,13 +111,21 @@ def collect_status(
         cfg_payload = {
             "mt5_login": settings.credentials.mt5_login,
             "mt5_server": settings.credentials.mt5_server,
+            "symbols": ",".join(settings.trading.symbols),
             "risk_per_trade_pct": settings.risk.risk_per_trade_pct,
+            "max_single_trade_risk_pct": settings.risk.max_single_trade_risk_pct,
             "max_daily_loss_pct": settings.risk.max_daily_loss_pct,
             "max_drawdown_pct": settings.risk.max_drawdown_pct,
             "max_open_trades": settings.risk.max_open_trades,
+            "max_trades_per_symbol": settings.risk.max_trades_per_symbol,
+            "max_usd_exposure": settings.risk.max_usd_exposure,
+            "max_daily_trades": settings.risk.max_daily_trades,
             "min_smc_score": settings.smc.min_smc_score,
+            "ai_min_confidence": settings.ai_brain.min_confidence,
             "default_rr_target": settings.smc.default_rr_target,
             "breakeven_at_rr": settings.risk.breakeven_at_rr,
+            "trailing_start_rr": settings.risk.trailing_start_rr,
+            "max_trade_duration_minutes": settings.risk.max_trade_duration_minutes,
             "poll_interval_seconds": settings.mode.poll_interval_seconds,
             "dry_run": settings.mode.dry_run,
         }
@@ -125,6 +134,7 @@ def collect_status(
         "mode": mode_label,
         "paused": bool(bot_state.get("paused")) if bot_state else False,
         "session": session,
+        "schedule": get_market_schedule_info(),
         "balance": round(acc.balance, 2),
         "equity": round(acc.equity, 2),
         "margin_free": round(acc.margin_free, 2),
@@ -169,6 +179,39 @@ def _update_env_and_config(payload: Dict[str, Any], settings: FridaySettings) ->
             val = int(payload["poll_interval_seconds"])
             raw["mode"]["poll_interval_seconds"] = val
             settings.mode.poll_interval_seconds = val
+        if "max_single_trade_risk_pct" in payload and payload["max_single_trade_risk_pct"] is not None:
+            val = float(payload["max_single_trade_risk_pct"])
+            raw["risk"]["max_single_trade_risk_pct"] = val
+            settings.risk.max_single_trade_risk_pct = val
+        if "max_trades_per_symbol" in payload and payload["max_trades_per_symbol"] is not None:
+            val = int(payload["max_trades_per_symbol"])
+            raw["risk"]["max_trades_per_symbol"] = val
+            settings.risk.max_trades_per_symbol = val
+        if "max_usd_exposure" in payload and payload["max_usd_exposure"] is not None:
+            val = int(payload["max_usd_exposure"])
+            raw["risk"]["max_usd_exposure"] = val
+            settings.risk.max_usd_exposure = val
+        if "max_daily_trades" in payload and payload["max_daily_trades"] is not None:
+            val = int(payload["max_daily_trades"])
+            raw["risk"]["max_daily_trades"] = val
+            settings.risk.max_daily_trades = val
+        if "trailing_start_rr" in payload and payload["trailing_start_rr"] is not None:
+            val = float(payload["trailing_start_rr"])
+            raw["risk"]["trailing_start_rr"] = val
+            settings.risk.trailing_start_rr = val
+        if "max_trade_duration_minutes" in payload and payload["max_trade_duration_minutes"] is not None:
+            val = int(payload["max_trade_duration_minutes"])
+            raw["risk"]["max_trade_duration_minutes"] = val
+            settings.risk.max_trade_duration_minutes = val
+        if "ai_min_confidence" in payload and payload["ai_min_confidence"] is not None:
+            val = int(payload["ai_min_confidence"])
+            raw["ai_brain"]["min_confidence"] = val
+            settings.ai_brain.min_confidence = val
+        if payload.get("symbols"):
+            syms = [s.strip().upper() for s in str(payload["symbols"]).split(",") if s.strip()]
+            if syms:
+                raw["trading"]["symbols"] = syms
+                settings.trading.symbols = syms
         if "max_open_trades" in payload and payload["max_open_trades"] is not None:
             val = int(payload["max_open_trades"])
             raw["risk"]["max_open_trades"] = val
@@ -195,10 +238,16 @@ def _update_env_and_config(payload: Dict[str, Any], settings: FridaySettings) ->
         updates["MT5_PASSWORD"] = str(payload["mt5_password"])
     if payload.get("mt5_server"):
         updates["MT5_SERVER"] = str(payload["mt5_server"])
+    if payload.get("openai_api_key"):
+        updates["OPENAI_API_KEY"] = str(payload["openai_api_key"])
     if payload.get("gemini_api_key"):
         updates["GEMINI_API_KEY"] = str(payload["gemini_api_key"])
     if payload.get("groq_api_key"):
         updates["GROQ_API_KEY"] = str(payload["groq_api_key"])
+    if payload.get("ollama_api_key"):
+        updates["OLLAMA_API_KEY"] = str(payload["ollama_api_key"])
+    if payload.get("ollama_model"):
+        updates["OLLAMA_MODEL"] = str(payload["ollama_model"])
     if payload.get("telegram_bot_token"):
         updates["TELEGRAM_BOT_TOKEN"] = str(payload["telegram_bot_token"])
     if payload.get("telegram_chat_id"):
@@ -274,13 +323,47 @@ def start_dashboard(
             if parsed.path == "/api/market_chart":
                 qs = parse_qs(parsed.query)
                 sym = qs.get("symbol", ["XAUUSD"])[0]
-                df = connector.get_ohlc(sym, "M15", 60)
+                df = connector.get_ohlc(sym, "M15", 80)
                 if df is None:
-                    self._send_json({"labels": [], "closes": []})
+                    self._send_json({"labels": [], "closes": [], "candles": []})
                     return
                 labels = [str(t)[11:16] for t in df.index]
                 closes = [round(float(c), 5) for c in df["close"]]
-                self._send_json({"labels": labels, "closes": closes})
+                candles = [
+                    {
+                        "time": int(idx.timestamp()),
+                        "open": round(float(row["open"]), 5),
+                        "high": round(float(row["high"]), 5),
+                        "low": round(float(row["low"]), 5),
+                        "close": round(float(row["close"]), 5),
+                    }
+                    for idx, row in df.iterrows()
+                ]
+                self._send_json({"labels": labels, "closes": closes, "candles": candles})
+                return
+
+            if parsed.path == "/api/news":
+                import urllib.request
+                import xml.etree.ElementTree as ET
+                news_items = []
+                try:
+                    url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC=F,EURUSD=X,GBPUSD=X,JPY=X&region=US&lang=en-US"
+                    req = urllib.request.Request(url, headers={"User-Agent": "FRIDAY-Bot/1.0"})
+                    with urllib.request.urlopen(req, timeout=3.0) as resp:
+                        root = ET.fromstring(resp.read())
+                    for item in root.findall(".//item")[:8]:
+                        news_items.append(
+                            {
+                                "title": item.findtext("title", ""),
+                                "link": item.findtext("link", "#"),
+                                "pubDate": item.findtext("pubDate", "")[:22],
+                            }
+                        )
+                except Exception:
+                    news_items = [
+                        {"title": "Live RSS feed unavailable offline — check internet connection.", "link": "#", "pubDate": ""}
+                    ]
+                self._send_json({"items": news_items})
                 return
 
             body = SOFT_UI_HTML.encode("utf-8")

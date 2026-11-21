@@ -137,6 +137,23 @@ SOFT_UI_HTML = """<!DOCTYPE html>
     </nav>
 
     <div class="container-fluid py-3">
+      <!-- LOCK-SCREEN GREETING & WEEKEND MARKET COUNTDOWN BANNER -->
+      <div class="card mb-3 border-0" id="greetingBanner" style="background: linear-gradient(90deg, #ffffff 0%, #f7fee7 100%);">
+        <div class="card-body py-3 px-4 d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <h5 class="mb-0 font-weight-bolder text-dark" id="lockGreeting">Welcome back, Tatenda</h5>
+            <span class="text-xs text-secondary" id="marketStatusMsg">Checking market hours...</span>
+          </div>
+          <div id="countdownBox" class="d-none align-items-center gap-2 bg-white px-3 py-2 border-radius-lg shadow-xs" style="border:1px solid #d9f99d;">
+            <i class="ti ti-clock-hour-4 text-lime fs-5"></i>
+            <div>
+              <div class="text-xxs text-uppercase text-secondary font-weight-bold">Markets Open In</div>
+              <div class="text-sm font-weight-bolder text-lime" id="marketCountdown">--:--:--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- TAB 1: DASHBOARD -->
       <div id="tab-dashboard" class="tab-pane-custom active">
         <div class="row g-3 mb-4">
@@ -262,6 +279,38 @@ SOFT_UI_HTML = """<!DOCTYPE html>
 
       <!-- TAB 2: LIVE MARKETS -->
       <div id="tab-markets" class="tab-pane-custom">
+        <div class="row g-3 mb-4">
+          <div class="col-lg-8">
+            <div class="card h-100">
+              <div class="card-header bg-white pb-0 d-flex justify-content-between align-items-center">
+                <div>
+                  <h6 class="mb-0"><i class="ti ti-chart-candle text-lime me-1"></i>Interactive Candlestick Chart (M15)</h6>
+                  <span class="text-xs text-secondary">Live MT5 OHLC Price Action</span>
+                </div>
+                <select id="candleSymbolSelect" class="form-select form-select-sm w-auto" onchange="refreshCandles()">
+                  <option value="EURUSD">EURUSD</option>
+                  <option value="GBPUSD">GBPUSD</option>
+                  <option value="USDJPY">USDJPY</option>
+                  <option value="XAUUSD" selected>XAUUSD</option>
+                </select>
+              </div>
+              <div class="card-body p-3">
+                <div id="candleChartContainer" style="width:100%; height:340px;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card h-100">
+              <div class="card-header bg-white pb-0 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="ti ti-news text-lime me-1"></i>Live Market News</h6>
+                <button class="btn btn-link text-lime text-xs p-0 mb-0" onclick="refreshNews()">Refresh</button>
+              </div>
+              <div class="card-body p-3" id="newsFeedBox" style="max-height:360px; overflow-y:auto;">
+                <span class="text-xs text-secondary">Loading headlines...</span>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="card mb-4">
           <div class="card-header bg-white pb-0"><h6><i class="ti ti-world text-lime me-1"></i>Live Market Watch &amp; Spreads</h6></div>
           <div class="card-body"><div class="table-responsive">
@@ -304,10 +353,16 @@ SOFT_UI_HTML = """<!DOCTYPE html>
               <div class="mb-2"><label class="form-label text-xs">MT5 Login</label><input id="cfgLogin" class="form-control form-control-sm" /></div>
               <div class="mb-2"><label class="form-label text-xs">MT5 Password</label><input id="cfgPassword" type="password" placeholder="Leave blank to keep current" class="form-control form-control-sm" /></div>
               <div class="mb-2"><label class="form-label text-xs">MT5 Server</label><input id="cfgServer" class="form-control form-control-sm" /></div>
-              <div class="mb-2"><label class="form-label text-xs">Free AI Keys (Gemini / Groq)</label>
+              <div class="mb-2"><label class="form-label text-xs">AI API Keys (OpenAI / Gemini / Groq / Ollama)</label>
+                <input id="cfgOpenAI" placeholder="OPENAI_API_KEY (sk-...)" class="form-control form-control-sm mb-1" />
                 <input id="cfgGemini" placeholder="GEMINI_API_KEY" class="form-control form-control-sm mb-1" />
-                <input id="cfgGroq" placeholder="GROQ_API_KEY" class="form-control form-control-sm" />
+                <input id="cfgGroq" placeholder="GROQ_API_KEY" class="form-control form-control-sm mb-1" />
+                <div class="row g-1">
+                  <div class="col-7"><input id="cfgOllamaKey" placeholder="OLLAMA_API_KEY" class="form-control form-control-sm" /></div>
+                  <div class="col-5"><input id="cfgOllamaModel" placeholder="deepseek-v4.1-flash" class="form-control form-control-sm" /></div>
+                </div>
               </div>
+              <div class="mb-2"><label class="form-label text-xs">Trading Symbols (comma-separated)</label><input id="cfgSymbols" class="form-control form-control-sm" /></div>
               <div class="mb-2"><label class="form-label text-xs">Telegram Alerts (Optional)</label>
                 <input id="cfgTgToken" placeholder="TELEGRAM_BOT_TOKEN" class="form-control form-control-sm mb-1" />
                 <input id="cfgTgChat" placeholder="TELEGRAM_CHAT_ID" class="form-control form-control-sm" />
@@ -322,9 +377,15 @@ SOFT_UI_HTML = """<!DOCTYPE html>
                 <div class="col-6"><label class="form-label text-xs">Max Daily Loss (%)</label><input id="cfgDailyLoss" type="number" step="0.1" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Max Drawdown (%)</label><input id="cfgMaxDD" type="number" step="0.5" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Max Open Trades</label><input id="cfgMaxOpen" type="number" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">Max Per Symbol</label><input id="cfgMaxPerSym" type="number" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">Max USD Exposure</label><input id="cfgMaxUsd" type="number" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">Max Daily Trades</label><input id="cfgMaxDaily" type="number" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Min SMC Score</label><input id="cfgMinSmc" type="number" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">AI Min Confidence (%)</label><input id="cfgAiConf" type="number" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Default R:R Target</label><input id="cfgRR" type="number" step="0.1" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Breakeven / Partial (R)</label><input id="cfgBeRR" type="number" step="0.1" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">Trailing Start (R)</label><input id="cfgTrailRR" type="number" step="0.1" class="form-control form-control-sm" /></div>
+                <div class="col-6"><label class="form-label text-xs">Max Trade Duration (min, 0=off)</label><input id="cfgMaxDur" type="number" class="form-control form-control-sm" /></div>
                 <div class="col-6"><label class="form-label text-xs">Scan Interval (sec)</label><input id="cfgPollSec" type="number" class="form-control form-control-sm" /></div>
               </div>
               <div class="form-check form-switch mt-3">
@@ -349,8 +410,24 @@ SOFT_UI_HTML = """<!DOCTYPE html>
   <script src="/assets/js/core/popper.min.js"></script>
   <script src="/assets/js/core/bootstrap.min.js"></script>
   <script src="/assets/js/plugins/chartjs.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script>
-    let equityChart = null, marketChart = null, configLoaded = false;
+    let equityChart = null, marketChart = null, candleChart = null, candleSeries = null, configLoaded = false, countdownSec = 0;
+
+    function formatCountdown(sec) {
+      if (sec <= 0) return '00h 00m 00s';
+      const d = Math.floor(sec / 86400);
+      const h = Math.floor((sec % 86400) / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return `${d > 0 ? d + 'd ' : ''}${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+    }
+    setInterval(() => {
+      if (countdownSec > 0) {
+        countdownSec--;
+        document.getElementById('marketCountdown').textContent = formatCountdown(countdownSec);
+      }
+    }, 1000);
 
     function switchTab(name, el, title) {
       document.querySelectorAll('.tab-pane-custom').forEach(t => t.classList.remove('active'));
@@ -361,6 +438,7 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         document.getElementById('pageTitle').textContent = title;
         document.getElementById('breadcrumbTitle').textContent = title;
       }
+      if (name === 'markets') { refreshCandles(); refreshNews(); }
     }
 
     async function refreshStatus() {
@@ -370,6 +448,20 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         document.getElementById('sessionInfo').textContent = `${d.session} | Updated ${new Date().toLocaleTimeString()}`;
         document.getElementById('sidebarSession').textContent = `${d.session} (${d.mode})`;
         document.getElementById('cardSessionShort').textContent = d.session;
+        if (d.schedule) {
+          document.getElementById('lockGreeting').textContent = d.schedule.greeting;
+          document.getElementById('marketStatusMsg').textContent = d.schedule.status_message;
+          const cBox = document.getElementById('countdownBox');
+          if (d.schedule.is_weekend_closed) {
+            cBox.classList.remove('d-none');
+            cBox.classList.add('d-flex');
+            countdownSec = d.schedule.seconds_to_open;
+            document.getElementById('marketCountdown').textContent = formatCountdown(countdownSec);
+          } else {
+            cBox.classList.add('d-none');
+            cBox.classList.remove('d-flex');
+          }
+        }
         const badge = document.getElementById('statusBadge');
         badge.textContent = d.paused ? `${d.mode} (PAUSED)` : d.mode;
         badge.className = 'badge ' + (d.paused ? 'bg-gradient-warning' : 'bg-lime-grad');
@@ -426,13 +518,20 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         if (!configLoaded && d.config) {
           document.getElementById('cfgLogin').value = d.config.mt5_login || '';
           document.getElementById('cfgServer').value = d.config.mt5_server || '';
+          document.getElementById('cfgSymbols').value = d.config.symbols || '';
           document.getElementById('cfgRiskPct').value = d.config.risk_per_trade_pct;
           document.getElementById('cfgDailyLoss').value = d.config.max_daily_loss_pct;
           document.getElementById('cfgMaxDD').value = d.config.max_drawdown_pct;
           document.getElementById('cfgMaxOpen').value = d.config.max_open_trades;
+          document.getElementById('cfgMaxPerSym').value = d.config.max_trades_per_symbol;
+          document.getElementById('cfgMaxUsd').value = d.config.max_usd_exposure;
+          document.getElementById('cfgMaxDaily').value = d.config.max_daily_trades;
           document.getElementById('cfgMinSmc').value = d.config.min_smc_score;
+          document.getElementById('cfgAiConf').value = d.config.ai_min_confidence;
           document.getElementById('cfgRR').value = d.config.default_rr_target;
           document.getElementById('cfgBeRR').value = d.config.breakeven_at_rr;
+          document.getElementById('cfgTrailRR').value = d.config.trailing_start_rr;
+          document.getElementById('cfgMaxDur').value = d.config.max_trade_duration_minutes;
           document.getElementById('cfgPollSec').value = d.config.poll_interval_seconds;
           document.getElementById('cfgDryRun').checked = !!d.config.dry_run;
           configLoaded = true;
@@ -484,6 +583,45 @@ SOFT_UI_HTML = """<!DOCTYPE html>
       } catch(e) {}
     }
 
+    async function refreshCandles() {
+      const sym = document.getElementById('candleSymbolSelect').value;
+      const container = document.getElementById('candleChartContainer');
+      if (!window.LightweightCharts || !container) return;
+      try {
+        const r = await fetch(`/api/market_chart?symbol=${sym}`);
+        const d = await r.json();
+        if (!candleChart) {
+          candleChart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: 340,
+            layout: { background: { color: '#ffffff' }, textColor: '#334155' },
+            grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
+            timeScale: { timeVisible: true, secondsVisible: false }
+          });
+          candleSeries = candleChart.addCandlestickSeries({
+            upColor: '#65a30d', downColor: '#ef4444', borderVisible: false,
+            wickUpColor: '#65a30d', wickDownColor: '#ef4444'
+          });
+        }
+        if (d.candles && d.candles.length) {
+          candleSeries.setData(d.candles);
+          candleChart.timeScale().fitContent();
+        }
+      } catch(e) {}
+    }
+
+    async function refreshNews() {
+      try {
+        const r = await fetch('/api/news');
+        const d = await r.json();
+        document.getElementById('newsFeedBox').innerHTML = (d.items || []).map(n => `
+          <div class="mb-3 pb-2 border-bottom">
+            <a href="${n.link}" target="_blank" class="text-xs font-weight-bold text-dark d-block">${n.title}</a>
+            <span class="text-xxs text-secondary">${n.pubDate || ''}</span>
+          </div>`).join('') || '<span class="text-xs text-secondary">No headlines available.</span>';
+      } catch(e) {}
+    }
+
     async function toggleBot() { await fetch('/api/bot/toggle', {method:'POST'}); refreshStatus(); }
     async function closeOne(ticket) { await fetch('/api/close_position', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ticket})}); refreshStatus(); }
     async function closeAllPositions() { if(confirm('Close all open MT5 positions?')) { await fetch('/api/close_all', {method:'POST'}); refreshStatus(); } }
@@ -492,17 +630,27 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         mt5_login: document.getElementById('cfgLogin').value,
         mt5_password: document.getElementById('cfgPassword').value,
         mt5_server: document.getElementById('cfgServer').value,
+        symbols: document.getElementById('cfgSymbols').value,
+        openai_api_key: document.getElementById('cfgOpenAI').value,
         gemini_api_key: document.getElementById('cfgGemini').value,
         groq_api_key: document.getElementById('cfgGroq').value,
+        ollama_api_key: document.getElementById('cfgOllamaKey').value,
+        ollama_model: document.getElementById('cfgOllamaModel').value,
         telegram_bot_token: document.getElementById('cfgTgToken').value,
         telegram_chat_id: document.getElementById('cfgTgChat').value,
         risk_per_trade_pct: parseFloat(document.getElementById('cfgRiskPct').value),
         max_daily_loss_pct: parseFloat(document.getElementById('cfgDailyLoss').value),
         max_drawdown_pct: parseFloat(document.getElementById('cfgMaxDD').value),
         max_open_trades: parseInt(document.getElementById('cfgMaxOpen').value),
+        max_trades_per_symbol: parseInt(document.getElementById('cfgMaxPerSym').value),
+        max_usd_exposure: parseInt(document.getElementById('cfgMaxUsd').value),
+        max_daily_trades: parseInt(document.getElementById('cfgMaxDaily').value),
         min_smc_score: parseInt(document.getElementById('cfgMinSmc').value),
+        ai_min_confidence: parseInt(document.getElementById('cfgAiConf').value),
         default_rr_target: parseFloat(document.getElementById('cfgRR').value),
         breakeven_at_rr: parseFloat(document.getElementById('cfgBeRR').value),
+        trailing_start_rr: parseFloat(document.getElementById('cfgTrailRR').value),
+        max_trade_duration_minutes: parseInt(document.getElementById('cfgMaxDur').value),
         poll_interval_seconds: parseInt(document.getElementById('cfgPollSec').value),
         dry_run: document.getElementById('cfgDryRun').checked
       };

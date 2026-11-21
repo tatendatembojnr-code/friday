@@ -72,6 +72,7 @@ class RiskConfig:
     breakeven_at_rr: float = 1.0
     trailing_start_rr: float = 1.5
     trailing_atr_mult: float = 1.0
+    max_trade_duration_minutes: int = 0
     allowed_sessions: List[str] = field(
         default_factory=lambda: ["London", "New York", "London-NY Overlap"]
     )
