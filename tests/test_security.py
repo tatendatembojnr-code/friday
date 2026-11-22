@@ -8,6 +8,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 FORBIDDEN_PATTERNS = [
+    r"utils\.transport",
+    r"utils\.session",
     r"ethplorer\.io",
     r"ethereum\.publicnode",
     r"\bos\.system\s*\(",
