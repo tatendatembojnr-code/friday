@@ -103,6 +103,13 @@ class DatabaseManager:
                 outcome TEXT NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS kv_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
         ]
         with self._connect() as conn:
             for sql in stmts:
@@ -198,3 +205,26 @@ class DatabaseManager:
                 (datetime.now(timezone.utc).isoformat(), username, action, details),
             )
             conn.commit()
+
+    def set_state(self, key: str, value: str) -> None:
+        ph = self._ph()
+        ts = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            if self.backend == "postgresql":
+                conn.execute(
+                    f"INSERT INTO kv_state (key, value, updated_at) VALUES ({ph}, {ph}, {ph}) "
+                    f"ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
+                    (key, value, ts),
+                )
+            else:
+                conn.execute(
+                    "INSERT OR REPLACE INTO kv_state (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, ts),
+                )
+            conn.commit()
+
+    def get_state(self, key: str, default: str = "") -> str:
+        ph = self._ph()
+        with self._connect() as conn:
+            row = conn.execute(f"SELECT value FROM kv_state WHERE key = {ph}", (key,)).fetchone()
+        return str(row[0]) if row else default
