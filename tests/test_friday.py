@@ -310,3 +310,28 @@ def test_expanded_symbols_loaded_in_config():
     s = FridaySettings.load()
     assert "EURJPY" in s.trading.symbols
     assert "AUDUSD" in s.trading.symbols
+
+
+def test_analytics_loss_streak_edge_matrix_and_webhook(tmp_path):
+    from ai.self_learner import SelfLearner
+    from core.analytics import compute_portfolio_analytics
+    from core.webhook_server import parse_webhook_alert
+
+    mem = FridayMemory(tmp_path / "metrics.db")
+    mem.sync_closed_deal(1, "EURUSD", "BUY", 120.0)
+    mem.sync_closed_deal(2, "EURUSD", "BUY", -40.0)
+    mem.sync_closed_deal(3, "EURUSD", "BUY", -30.0)
+
+    stats = compute_portfolio_analytics(tmp_path / "metrics.db")
+    assert stats["total_trades"] == 3
+    assert stats["profit_factor"] > 1.5
+
+    learner = SelfLearner(tmp_path / "metrics.db")
+    assert learner.get_recent_loss_streak() == 2
+    matrix = learner.get_edge_matrix()
+    assert len(matrix) == 1 and matrix[0]["symbol"] == "EURUSD"
+
+    ok, alert, _ = parse_webhook_alert({"secret": "abc", "symbol": "xauusd", "action": "buy"}, expected_secret="abc")
+    assert ok and alert["symbol"] == "XAUUSD" and alert["action"] == "BUY"
+    bad, _, _ = parse_webhook_alert({"secret": "wrong", "symbol": "XAUUSD", "action": "BUY"}, expected_secret="abc")
+    assert not bad
