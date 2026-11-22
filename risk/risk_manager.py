@@ -25,10 +25,15 @@ def usd_direction_sign(symbol: str, side: str) -> int:
 class RiskManager:
     """Enforces non-negotiable risk limits and computes exact lot sizes."""
 
-    def __init__(self, config: RiskConfig):
+    def __init__(self, config: RiskConfig, db=None):
         self.logger = logging.getLogger("FRIDAY")
         self.cfg = config
-        self.peak_equity = 0.0
+        self.db = db
+        saved_peak = db.get_state("peak_equity", "0.0") if db else "0.0"
+        try:
+            self.peak_equity = float(saved_peak)
+        except ValueError:
+            self.peak_equity = 0.0
 
     def validate_and_size(
         self,
@@ -49,6 +54,8 @@ class RiskManager:
 
         if account.equity > self.peak_equity:
             self.peak_equity = account.equity
+            if self.db:
+                self.db.set_state("peak_equity", f"{self.peak_equity:.2f}")
 
         if self.peak_equity > 0:
             drawdown_pct = ((self.peak_equity - account.equity) / self.peak_equity) * 100.0

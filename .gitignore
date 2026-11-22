@@ -15,5 +15,6 @@ logs/
 data/
 *.db
 *.sqlite
+models/registry/
 config.bat
 node_modules
