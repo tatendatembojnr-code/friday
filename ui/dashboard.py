@@ -13,11 +13,14 @@ from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
 
+from ai.self_learner import SelfLearner
 from config.settings import BASE_DIR, FridaySettings
+from core.analytics import compute_portfolio_analytics
 from core.backtester import run_backtest
 from core.database import DatabaseManager
 from core.market_schedule import get_market_schedule_info
 from core.mt5_connector import MT5Connector
+from core.webhook_server import parse_webhook_alert
 from ui.template import LOGIN_HTML, SOFT_UI_HTML
 
 
@@ -154,6 +157,8 @@ def collect_status(
         "closed_deals": closed_deals,
         "equity_curve": equity_curve,
         "market_watch": market_watch,
+        "analytics": compute_portfolio_analytics(db_path),
+        "edge_matrix": SelfLearner(db_path).get_edge_matrix(),
         "logs": logs,
         "config": cfg_payload,
     }
@@ -445,6 +450,15 @@ def start_dashboard(
                     if "friday_session" in c:
                         db.delete_session(c["friday_session"].value)
                 self._send_json({"ok": True}, set_cookie="friday_session=; Path=/; Max-Age=0")
+                return
+
+            if self.path == "/api/webhook":
+                ok, parsed_alert, msg = parse_webhook_alert(payload)
+                if not ok:
+                    self._send_json({"ok": False, "error": msg}, status=400)
+                    return
+                db.log_audit("tradingview_webhook", "WEBHOOK_ALERT", json.dumps(parsed_alert))
+                self._send_json({"ok": True, "alert": parsed_alert})
                 return
 
             user = self._get_session_user()

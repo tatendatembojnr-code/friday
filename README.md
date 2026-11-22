@@ -33,15 +33,16 @@ MT5 Market Data (D1 / H4 / H1 / M15)
 
 ## Key Features
 
-- **Deterministic SMC Engine (`strategy/smc_engine.py`):**
-  - Fractal swing high/low detection
-  - Liquidity sweeps (stop-hunt wick rejections)
-  - Break of Structure (BOS), Order Blocks (OB), and Fair Value Gaps (FVG)
-  - Multi-timeframe bias alignment (`D1`, `H4`, `H1` -> `M15`)
-- **Multi-Persona AI Council (`ai/friday_brain.py`):**
-  - Evaluates each SMC setup from 3 specialist angles (Structure & Liquidity, Macro & Volatility, Risk/Reward Critic)
-  - Uses strict JSON structured outputs (`APPROVE` / `REJECT`, `confidence`, `market_regime`, `reasoning`)
-  - Includes a deterministic fallback if `OPENAI_API_KEY` is not configured
+- **Deterministic SMC Engine (`strategy/smc_engine.py` & `strategy/killzone_vwap.py`):**
+  - Fractal swing high/low detection, liquidity sweeps, BOS, Order Blocks, FVGs, Pin-Bar rejection wicks, and RSI(14) exhaustion guard
+  - Institutional Killzones (`LondonKillzone`, `NYKillzone`), Session VWAP, and PDH/PDL Premium/Discount scoring
+- **Multi-Persona AI Council & Self-Learner (`ai/friday_brain.py`, `ai/self_learner.py`):**
+  - Supports OpenAI, Google Gemini, Groq, and Ollama Cloud/Local with automatic cooldown circuit-breaker
+  - Learns per-symbol/direction edge from realized MT5 closed deals and throttles risk on losing streaks
+- **Soft UI Command Center (`ui/dashboard.py`, `core/database.py`):**
+  - White & Lime Green Bootstrap 5 Soft UI at `http://127.0.0.1:8501` with Sign-In auth, weekend countdown, candlestick chart, live news, one-click Backtester, Profit Factor/Expectancy analytics, and PostgreSQL/SQLite persistence
+- **CLI Backtester (`backtest_cli.py`):**
+  - Run `run friday --backtest` to benchmark all 6 symbols (`EURUSD`, `GBPUSD`, `USDJPY`, `XAUUSD`, `EURJPY`, `AUDUSD`)
 - **Adaptive SQLite Trade Memory (`ai/memory.py`):**
   - Logs every setup, AI verdict, and trade outcome to `data/friday_memory.db`
   - Feeds recent symbol-specific history back into FRIDAY's prompt

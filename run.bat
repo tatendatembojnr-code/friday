@@ -48,6 +48,11 @@ if errorlevel 1 (
     )
 )
 
-:: 4. Launch FRIDAY
+:: 4. Launch FRIDAY (or CLI Backtester)
+if /i "%~1"=="--backtest" (
+    echo [FRIDAY] Running multi-symbol CLI backtest...
+    ".venv\Scripts\python.exe" backtest_cli.py
+    exit /b %errorlevel%
+)
 echo [FRIDAY] Starting bot...
 ".venv\Scripts\python.exe" main.py %ARGS%
