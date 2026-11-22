@@ -342,6 +342,15 @@ SOFT_UI_HTML = """<!DOCTYPE html>
             </table>
           </div></div>
         </div>
+        <div class="card mb-4">
+          <div class="card-header bg-white pb-0"><h6><i class="ti ti-sparkles text-lime me-1"></i>Self-Learner Edge Matrix (Realized Performance)</h6></div>
+          <div class="card-body"><div class="table-responsive">
+            <table class="table align-items-center mb-0">
+              <thead><tr><th>Symbol</th><th>Direction</th><th>Trades</th><th>Wins</th><th>Win Rate</th><th>Net P&amp;L</th></tr></thead>
+              <tbody id="edgeMatrixBody"></tbody>
+            </table>
+          </div></div>
+        </div>
         <div class="card">
           <div class="card-header bg-white pb-0"><h6><i class="ti ti-history text-lime me-1"></i>Closed Trades History</h6></div>
           <div class="card-body"><div class="table-responsive">
@@ -519,7 +528,9 @@ SOFT_UI_HTML = """<!DOCTYPE html>
         document.getElementById('cardMargin').textContent = `$${d.margin_free.toLocaleString('en-US', {minimumFractionDigits:2})}`;
         document.getElementById('cardFloating').textContent = `Floating: ${d.floating_pnl >= 0 ? '+' : ''}$${d.floating_pnl.toFixed(2)}`;
         document.getElementById('cardProfits').textContent = `+$${d.total_profits.toLocaleString('en-US', {minimumFractionDigits:2})}`;
-        document.getElementById('cardWinRate').textContent = `Win Rate: ${d.win_rate_pct}% (${d.win_count}W)`;
+        const pf = d.analytics ? d.analytics.profit_factor : 0;
+        const exp = d.analytics ? d.analytics.expectancy : 0;
+        document.getElementById('cardWinRate').textContent = `WR: ${d.win_rate_pct}% | PF: ${pf} | Exp: $${exp}`;
         document.getElementById('cardLosses').textContent = `-$${Math.abs(d.total_losses).toLocaleString('en-US', {minimumFractionDigits:2})}`;
         document.getElementById('cardLossCount').textContent = `Closed: ${d.loss_count}L`;
         document.getElementById('cardOpenTrades').textContent = `${d.positions.length} / ${d.max_open_trades}`;
@@ -551,6 +562,14 @@ SOFT_UI_HTML = """<!DOCTYPE html>
             <td class="text-xs font-weight-bold ${c.outcome==='WIN'?'text-lime':'text-danger'}">${c.outcome}</td>
             <td class="text-xs ${c.pnl>=0?'text-lime':'text-danger'}">${c.pnl>=0?'+':''}$${c.pnl.toFixed(2)}</td>
           </tr>`).join('');
+
+        document.getElementById('edgeMatrixBody').innerHTML = (d.edge_matrix || []).map(e => `
+          <tr>
+            <td class="text-xs font-weight-bold">${e.symbol}</td><td class="text-xs">${e.direction}</td>
+            <td class="text-xs">${e.trades}</td><td class="text-xs">${e.wins}</td>
+            <td class="text-xs font-weight-bold">${e.win_rate_pct}%</td>
+            <td class="text-xs font-weight-bold ${e.net_pnl>=0?'text-lime':'text-danger'}">${e.net_pnl>=0?'+':''}$${e.net_pnl.toFixed(2)}</td>
+          </tr>`).join('') || '<tr><td colspan="6" class="text-xs text-secondary text-center py-2">No closed trades yet</td></tr>';
 
         document.getElementById('marketWatchBody').innerHTML = d.market_watch.map(m => `
           <tr><td class="text-xs font-weight-bold">${m.symbol}</td><td class="text-xs">${m.bid}</td><td class="text-xs">${m.ask}</td><td class="text-xs">${m.spread}</td><td class="text-xs">${m.last_close}</td></tr>`).join('');
