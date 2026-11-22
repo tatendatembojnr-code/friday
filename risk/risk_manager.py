@@ -42,6 +42,7 @@ class RiskManager:
         symbol_open_count: int = 0,
         open_positions: Optional[List[Dict]] = None,
         vol_ratio: float = 1.0,
+        recent_loss_streak: int = 0,
     ) -> Tuple[bool, float, str]:
         if account.balance <= 0:
             return False, 0.0, "Account balance is zero or unavailable."
@@ -98,11 +99,12 @@ class RiskManager:
         if account.balance < 100:
             lot_size = round(specs.volume_min, 2)
         else:
-            # Asymmetric conviction sizing: 0.75x on standard setups, 1.0x on A+ setups (>= 85), 0.5x on vol spikes
+            # Asymmetric conviction sizing: 0.75x on standard setups, 1.0x on A+ setups (>= 85), 0.5x on vol spikes / loss streaks
             conviction_mult = 1.0 if setup.smc_score >= 85 else 0.75
             vol_mult = 0.5 if vol_ratio > 1.8 else 1.0
+            streak_mult = 0.5 if recent_loss_streak >= 2 else 1.0
             lot_size = self.calculate_lot_size(
-                account.balance, sl_dist, specs, risk_mult=conviction_mult * vol_mult
+                account.balance, sl_dist, specs, risk_mult=conviction_mult * vol_mult * streak_mult
             )
         if lot_size <= 0:
             return False, 0.0, "Calculated lot size is 0."
