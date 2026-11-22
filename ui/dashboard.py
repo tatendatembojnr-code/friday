@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import os
 import sqlite3
 import threading
+import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -138,7 +140,7 @@ def collect_status(
 
     return {
         "mode": mode_label,
-        "db_backend": "postgresql" if (settings and __import__("os").getenv("DATABASE_URL", "").startswith("postgres")) else "sqlite",
+        "db_backend": "postgresql" if (settings and os.getenv("DATABASE_URL", "").startswith("postgres")) else "sqlite",
         "paused": bool(bot_state.get("paused")) if bot_state else False,
         "session": session,
         "schedule": get_market_schedule_info(),
@@ -294,10 +296,21 @@ def start_dashboard(
     logger = logging.getLogger("FRIDAY")
     state = bot_state if bot_state is not None else {"paused": False}
     db = DatabaseManager(db_path=db_path)
+    failed_logins: Dict[str, List[float]] = {}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:
             return
+
+        def _send_security_headers(self) -> None:
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+
+        def _is_rate_limited(self, ip: str) -> bool:
+            now = time.monotonic()
+            attempts = [t for t in failed_logins.get(ip, []) if now - t < 60.0]
+            failed_logins[ip] = attempts
+            return len(attempts) >= 5
 
         def _get_session_user(self) -> str | None:
             cookie_hdr = self.headers.get("Cookie", "")
@@ -314,6 +327,7 @@ def start_dashboard(
             body = json.dumps(data).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
+            self._send_security_headers()
             if set_cookie:
                 self.send_header("Set-Cookie", set_cookie)
             self.send_header("Content-Length", str(len(body)))
@@ -429,9 +443,14 @@ def start_dashboard(
             payload = json.loads(raw_body) if raw_body.strip() else {}
 
             if self.path == "/api/login":
+                client_ip = self.client_address[0]
+                if self._is_rate_limited(client_ip):
+                    self._send_json({"ok": False, "error": "Too many failed attempts. Wait 60s."}, status=429)
+                    return
                 uname = str(payload.get("username", "")).strip()
                 pwd = str(payload.get("password", ""))
                 if db.verify_user(uname, pwd):
+                    failed_logins.pop(client_ip, None)
                     tok = db.create_session(uname)
                     db.log_audit(uname, "LOGIN", "Signed into Web Command Center")
                     self._send_json(
@@ -439,6 +458,7 @@ def start_dashboard(
                         set_cookie=f"friday_session={tok}; Path=/; HttpOnly; SameSite=Lax",
                     )
                 else:
+                    failed_logins.setdefault(client_ip, []).append(time.monotonic())
                     self._send_json({"ok": False, "error": "Invalid username or password"}, status=401)
                 return
 
