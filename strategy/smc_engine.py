@@ -136,6 +136,19 @@ class SMCEngine:
             ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
             ltf_bullish = recent_close > ema20 and ema20 >= ema50
 
+            # Pin-bar / wick rejection bonus on latest candle
+            last_o, last_h, last_l, last_c = (
+                float(df["open"].iloc[-1]),
+                float(df["high"].iloc[-1]),
+                float(df["low"].iloc[-1]),
+                recent_close,
+            )
+            lower_wick = min(last_o, last_c) - last_l
+            body = max(abs(last_c - last_o), 1e-9)
+            if lower_wick > body * 1.5 and last_c >= last_o:
+                score += 10
+                tags.append("BullishPinBar")
+
             if rsi_val <= 72.0 and score >= self.cfg.min_smc_score and (swept_low or (bos_up and ltf_bullish) or (htf_bias == "BULLISH" and ltf_bullish and (ob or fvg))):
                 anchor_low = min(float(recent_lows.min()), ob[0] if ob else float(recent_lows.min()))
                 sl = min(anchor_low, recent_close - atr) - (atr * self.cfg.sl_atr_buffer)
@@ -193,6 +206,18 @@ class SMCEngine:
             ema20 = float(df["close"].ewm(span=20, adjust=False).mean().iloc[-1])
             ema50 = float(df["close"].ewm(span=50, adjust=False).mean().iloc[-1])
             ltf_bearish = recent_close < ema20 and ema20 <= ema50
+
+            last_o, last_h, last_l, last_c = (
+                float(df["open"].iloc[-1]),
+                float(df["high"].iloc[-1]),
+                float(df["low"].iloc[-1]),
+                recent_close,
+            )
+            upper_wick = last_h - max(last_o, last_c)
+            body = max(abs(last_c - last_o), 1e-9)
+            if upper_wick > body * 1.5 and last_c <= last_o:
+                score += 10
+                tags.append("BearishPinBar")
 
             if rsi_val >= 28.0 and score >= self.cfg.min_smc_score and (swept_high or (bos_down and ltf_bearish) or (htf_bias == "BEARISH" and ltf_bearish and (ob or fvg))):
                 anchor_high = max(float(recent_highs.max()), ob[1] if ob else float(recent_highs.max()))

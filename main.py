@@ -188,6 +188,7 @@ def run_cycle(
         lot_size = 0.0
 
         if ai_passed:
+            recent_streak = learner.get_recent_loss_streak()
             allowed, lot_size, reason = risk_mgr.validate_and_size(
                 setup=setup,
                 specs=specs,
@@ -199,6 +200,7 @@ def run_cycle(
                 symbol_open_count=symbol_open_count,
                 open_positions=open_positions,
                 vol_ratio=vol_ratio,
+                recent_loss_streak=recent_streak,
             )
             if allowed:
                 res = order_mgr.execute_setup(setup, lot_size)
