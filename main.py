@@ -15,8 +15,10 @@ if str(BASE_DIR) not in sys.path:
 
 from ai.friday_brain import FridayBrain
 from ai.memory import FridayMemory
+from ai.ml.inference_pipeline import MLInferencePipeline
 from ai.self_learner import SelfLearner
 from config.settings import FridaySettings
+from core.database import DatabaseManager
 from core.ea31337_bridge import EA31337Bridge
 from core.market_context import build_htf_bias, detect_trading_session, summarize_timeframe
 from core.mt5_connector import MT5Connector
@@ -37,6 +39,7 @@ def run_cycle(
     connector: MT5Connector,
     smc: SMCEngine,
     brain: FridayBrain,
+    ml_pipe: MLInferencePipeline,
     memory: FridayMemory,
     learner: SelfLearner,
     bridge: EA31337Bridge,
@@ -149,6 +152,17 @@ def run_cycle(
             continue
 
         spread_atr_ratio = (specs.ask - specs.bid) / setup.atr if setup.atr > 0 else 1.0
+        ml_pred = ml_pipe.predict(df_ltf, setup, spread_atr_ratio=spread_atr_ratio, vol_ratio=vol_ratio)
+        if ml_pred.ml_available:
+            logger.info(
+                f"{symbol} | ML({ml_pred.model_version}/{ml_pred.model_name}): "
+                f"p_win={ml_pred.p_win:.2f}, E[R]={ml_pred.expected_r:.2f}, "
+                f"Regime={ml_pred.regime.regime}, Decision={ml_pred.decision}"
+            )
+            if ml_pred.decision in ("REJECT", "ABSTAIN"):
+                logger.info(f"{symbol}: Filtered by ML meta-labeler ({ml_pred.decision}).")
+                continue
+
         mem_examples = memory.get_recent_context(symbol, limit=settings.ai_brain.max_memory_examples)
         ea_sig = bridge.get_signal(symbol)
         if ea_sig:
@@ -272,14 +286,16 @@ def main() -> None:
         ollama_api_key=settings.credentials.ollama_api_key,
         ollama_model=settings.credentials.ollama_model,
     )
+    db_mgr = DatabaseManager(BASE_DIR / "data" / "friday_memory.db")
     memory = FridayMemory(BASE_DIR / "data" / "friday_memory.db")
     learner = SelfLearner(BASE_DIR / "data" / "friday_memory.db")
+    ml_pipe = MLInferencePipeline()
     bridge = EA31337Bridge(settings.ea31337_bridge)
     tv_client = TradingViewClient()
     news_guard = NewsGuard()
     protections = ProtectionManager()
     notifier = TelegramNotifier()
-    risk_mgr = RiskManager(settings.risk)
+    risk_mgr = RiskManager(settings.risk, db=db_mgr)
     order_mgr = OrderManager(
         connector=connector,
         risk_cfg=settings.risk,
@@ -306,7 +322,7 @@ def main() -> None:
         while True:
             if not bot_state.get("paused", False):
                 run_cycle(
-                    settings, connector, smc, brain, memory, learner, bridge,
+                    settings, connector, smc, brain, ml_pipe, memory, learner, bridge,
                     tv_client, news_guard, protections, notifier, risk_mgr, order_mgr, logger,
                 )
             if args.once:
